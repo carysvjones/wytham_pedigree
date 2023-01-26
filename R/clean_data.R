@@ -1,0 +1,371 @@
+# DESCRIPTION ──────────────────────────────────────────────────────────────── #
+
+# Functions to prepare data for analysis - removes mixed broods, keeps only those
+#with lay dates recorded, known Pnums, nesting within the woods and fixes any 
+#obvious errors in data
+
+# DEPENDENCIES ─────────────────────────────────────────────────────────────── #
+
+box::use()
+
+# FUNCTIONS ────────────────────────────────────────────────────────────────── #
+
+
+#' Returns clean breeding data.
+#'
+#' @param data Wytham breeding data.
+#' @return dataset clean and standardised 
+
+
+#function to clean raw breeding data 
+
+clean_breeding_data <- function(data){
+  
+  #make all ring names upper case
+  data$Mother <- toupper(data$Mother)
+  data$Father <- toupper(data$Father)
+  
+  #factorise columns
+  data$Pnum <- as.factor(data$Pnum)
+  data$Section <- as.factor(data$Section)
+  data$Mixed.species <- as.factor(data$Mixed.species)
+  data$Species <- as.factor(data$Species)
+  data$Closed <- as.factor(data$Closed)
+  data$Missing.entire.brood <- as.factor(data$Missing.entire.brood)
+  data$Suspected.predation <- as.factor(data$Suspected.predation)
+  data$Lay.date <- as.Date(data$Lay.date, '%d / %m / %Y')
+  data$Hatch.date <- as.Date(data$Hatch.date, '%d / %m / %Y')
+  data$Father <- as.factor(data$Father)
+  data$Mother <- as.factor(data$Mother)
+  data$Experiment.codes <- as.factor(data$Experiment.codes)
+  
+  #get rid of any mixed species
+  data <- droplevels(subset(data, Mixed.species != TRUE))
+  
+  #take out those that have NA for lay date
+  data <- droplevels(subset(data, !is.na(April.lay.date)))
+  
+  
+  #make a column with the nest box code in...
+  data$nest.box <- substr(data$Pnum, start = 6, 15)
+  data$nest.box <- as.factor(data$nest.box)
+  
+  #after made nest box column adjust the section of some boxes
+  #some are listed as unknown, but are within the sections of the woods
+  #so rename their section with actual section
+  #then afterwards can remove those not in the woods...
+  #pnums of those with unknown section
+  unknown_Pnums <- data$Pnum[data$Section == 'unknown']
+  #if start with CP, EX, W, SW, O, C, MP, P, then keep, others get rid
+  for(i in unknown_Pnums){
+    ifelse(
+      #for double letter sections
+      #if is in one of the double letter sections
+      substr(data$nest.box[data$Pnum == i], start = 1,2) %in% c('CP', 'EX',  'SW',  'MP'),
+      #if true then paste section into Section column
+      data$Section[data$Pnum == i] <- tolower(substr(data$nest.box[data$Pnum == i], start = 1,2)),
+      #if not true check if its in single letter section
+      #don't include B because then it keeps BY boxes which aren't in woods
+      #there are no B boxes so it doesn't matter
+      ifelse(substr(data$nest.box[data$Pnum == i], start = 1,1) %in% c('W','O', 'C', 'P'),
+             #if yes keep and rename section
+             data$Section[data$Pnum == i] <- tolower(substr(data$nest.box[data$Pnum == i], start = 1,1)),
+             #if not rename with unknown (how do i say just do nothing..?)
+             data$Section[data$Pnum == i] <- 'unknown'))
+  }
+  
+  
+  #take out those with section unknown and he
+  data <- droplevels(subset(data, Section != 'unknown' & Section != 'he'))
+  
+  
+  #some individuals recorded as both species
+  #20101O253 - has father as blue tit mother as great tit young as blue tits - get rid 
+  #20071SW75 - mother and father need to change - mother = T176160, father = NA 
+  #20071O74, mother should be V260632, father should be V260844, stay as blue tit 
+  data <- droplevels(subset(data, Pnum != '20101O253'))
+  
+  #first have to add them as factor levels
+  levels(data$Mother) <- c(levels(data$Mother), 'T176160', 'V260632')
+  levels(data$Father) <- c(levels(data$Father), 'V260844')
+  
+  data$Mother[data$Pnum == '20071SW75'] <- 'T176160'
+  data$Mother[data$Pnum == '20071O74'] <- 'V260632'
+  
+  data$Father[data$Pnum == '20071SW75'] <- NA
+  data$Father[data$Pnum == '20071O74'] <- 'V260844'
+  
+  #20082W37 listed as blue tit but is actually great tit - something about nest take over so just get rid
+  data <- droplevels(subset(data, Pnum != '20082W37'))
+  
+  
+  ###GREAT TIT SPECIFIC CLEANING 
+  
+  #get rid of Pnum 20081EX27, 20051EX66
+  #mother recorded twice in 1 year lay date same day but in different boxes...
+  data <- droplevels(subset(data, Pnum != '20081EX27'))
+  #same here - am keeping attempts where we know father too...
+  data <- droplevels(subset(data, Pnum != '20051EX66'))
+  
+  # #remove E985078 - is in there as male and female.... 3 times as male so remove one where it is mother
+  #use Pnum to get rid 
+  data <- droplevels(subset(data, Pnum != '20081CP35'))
+  #remove 20181EX20 - has same ID recorded for mother and father
+  data <- droplevels(subset(data, Pnum != '20181EX20'))
+  
+  #remove this Pnum cause causes trouble later on...
+  #get rid - 20182EX14 
+  #this pnum says no fledglings recorded, and all same fledglings are named under another pnum (20181EX14)
+  data <- droplevels(subset(data, Pnum != '20182EX14'))
+  
+  #check if any other parents are listed as both mother and father?
+  # breed_gtit_noFNA <- droplevels(subset(breed_gtit, !(is.na(Father))))
+  # breed_gtit_noFNA$Father[breed_gtit_noFNA$Father %in% breed_gtit$Mother]
+  # #TK26998 L315432 X239739 - have only one entry for each so remove all 
+  # subset(breed_gtit, Father == 'TK26998')
+  # subset(breed_gtit, Mother == 'TK26998')
+  #pnums = 
+  #TK26998, 20081SW112 - make father NA,  and 20081O75 - make mother NA 
+  data$Father[data$Pnum == '20081SW112'] <- NA
+  data$Mother[data$Pnum == '20081O75'] <- NA
+  
+  
+  # #L315432, 20101ST5 - L315433 is male and L315432 is female - need to swap them,  and 20111ST5 stay same
+  # levels(data$Father) <- c(levels(data$Father), 'L315433')
+  # data$Mother[data$Pnum == '20101ST5'] <- 'L315432'
+  # data$Father[data$Pnum == '20101ST5'] <- 'L315433'
+  #is in unknown section so already removed now
+  
+  #X239739, 20101W97 - says X239739 male, and F833150 female, - make male NA?
+  #         20121EX39 - X239739 is female - get rid of all, because has no father recorded 
+  data <- droplevels(subset(data, Pnum != '20121EX39'))
+  data$Father[data$Pnum == '20101W97'] <- NA
+  
+  #listed as male and female - just make NA
+  #Y031429 is duplicated
+  #20121W56 = father , 20131W56 = mother- listed as male and female get rid - just make both NA?
+  data$Father[data$Pnum == '20121W56'] <- NA
+  data$Mother[data$Pnum == '20131W56'] <- NA
+  
+  
+  #these are same mothers 2 breeding attempts in 1 year
+  #with less than 20 days inbetween them, but both/first has fledglings...
+  #need almost 2 weeks  to hatch and 3 weeks to fledge usually... 
+  #so just cutting all out 
+  too_short_int <- c('19651O86', '19821EX58', '20061EX2', '20181C32',
+                     '19651O106', '19721O11', '19891W104', '20181SW109')
+  data <- droplevels(subset(data, !(Pnum %in% too_short_int)))
+  
+  #keep 19721O13, 19881W17, 19821EX61, 19891W103A, 20061EX81A, 19971EX47A, 
+  #edit 19881W38 to make mother = NA
+  data$Mother[data$Pnum == '19881W38'] <- NA
+  #edt 19971EX48A, make parents VR26902 and J644096 instead - in breeding data that pnum has 2 diff parents
+  #but so second pnum where those paretns are recorded with young
+  #this pnum has 2 different parents, so change parents in breeding data to them 
+  #J644096 is recorded as female at one point so make mother and other father.
+  #first have to add them as factor levels
+  levels(data$Mother) <- c(levels(data$Mother), 'J644096')
+  levels(data$Father) <- c(levels(data$Father), 'VR26902')
+  data$Mother[data$Pnum == '19971EX48A'] <- 'J644096'
+  data$Father[data$Pnum == '19971EX48A'] <- 'VR26902'
+  
+  #20121O64 listed as great tit but is actually blue tit 
+  data$Species[data$Pnum == '20121O64'] <- 'b'
+  
+  
+  ###BLUE TIT SPECIFIC CLEANING
+  
+  #these have 2 entries each with a different sex each time 
+  #20011B116  20041O4    20041SW51  20052O44   20061B86   20071B184  20071B42   20081B14   20081MP8  
+  # 20081O47   20081W202  20091C31   20091P113  20101B130  20111CP10  20111DMA48 20111O215  20111O75  
+  #20121DMC16 20121O75
+  btit_wrong_sex <- c('20011B116', '20041O4', '20041SW51', '20052O44', '20061B86', '20071B184', '20071B42',
+                      '20081B14', '20081MP8', '20081O47', '20081W202', '20091C31', '20091P113', '20101B130', 
+                      '20111CP10', '20111DMA48', '20111O215', '20111O75', '20121DMC16', '20121O75')
+  data <- droplevels(subset(data, !(Pnum %in% btit_wrong_sex)))
+  
+  #remove this Pnum cause causes trouble later on...
+  #get rid - 20182EX14 and 
+  #fledglings are recorded under first and second brood, but only dates are recorded for second?
+  ##so am just removing.....  20151B138, 20152B138
+  data <- droplevels(subset(data, Pnum != '20151B138' & Pnum != '20152B138'))
+  
+  #get rid of Pnum 20072CP150, is exact copy of 20071CP150
+  data <- droplevels(subset(data, Pnum != '20072CP150'))
+  
+  #19771B94, 19771B94 - these are 2nd and 3rd lay dates, 29 and 33, after first lay date at 25 
+  #days was said to have 10 fledglings, so just keeping first lay date (mother = KR80015)
+  data <- droplevels(subset(data, Pnum != '19771B94' & Pnum != '19771B114'))
+  
+  
+  #these are same mothers 2 breeding attempts in 1 year
+  #with less than 20 days inbetween them, but both/first has fledglings...
+  #need almost 2 weeks  to hatch and 3 weeks to fledge usually... 
+  #so just cutting all out 
+  #add these
+  #too short interval - none in ringing data 
+  # 19651B192, 19651B201 
+  # 20161CP13, 20161CP115
+  too_short_int_btit <- c('19821EX60', '19851C152', '19851C153', '19891C45', '19891C145', '19751O20', 
+                          '19751EX41', '19741EX10', '19781EX88', '19781W60', '19771O115', '19771O103', 
+                          '19781SW80A', '19781SW57', '20101O50', '20101O75D', '20071O219', '20141O71', 
+                          '20141O72', '19651B192', '19651B201', '20161CP13', '20161CP115')
+  data <- droplevels(subset(data, !(Pnum %in% too_short_int_btit)))
+  
+  
+  # pnum 20131C119 = female - Y837823, L808541 male (also male in 20121C19) - also recorded female lots
+  #Y839006 as father -  always recorded as male
+  #remove all Pnums - 20131C119, 20141C21, 20121C19
+  data <- droplevels(subset(data, Pnum != '20131C119' & Pnum != '20141C21' & Pnum != '20121C19'))
+  
+  #these are males that nested 2 times in 1 year with laying date on the same day... 
+  #think it coul dbe possible cuase different females and nest boxes nearby
+  #should I exclude??
+  # dupl_F_gtit <- droplevels(subset(dupl_F_gtit, Pnum != '19881B222' & Pnum != '19881B36' &
+  #                                    Pnum != '20101P7' & Pnum != '20101P8'))
+  # 
+  return(data)
+}
+
+
+#' Returns clean ringing data from old data (up to 2013).
+#'
+#' @param data Wytham ringing data.
+#' @return dataset clean and standardised 
+
+clean_ringing_data <- function(data){
+  
+  #make all ring names upper case
+  data$bto_ring <- toupper(data$bto_ring)
+  
+  data$id <- as.factor(data$id)
+  data$Pnum <- as.factor(data$pnum)
+  data$site <- as.factor(data$site)
+  data$grid_ref <- as.factor(data$grid_ref)
+  data$location <- as.factor(data$location)
+  data$retrap <- as.factor(data$retrap)
+  data$age <- as.factor(data$age)
+  data$sex <- as.factor(data$sex)
+  data$bto_species_code <- as.factor(data$bto_species_code)
+  data$bto_ring <- as.factor(data$bto_ring)
+  data$nb <- as.factor(data$nb)
+  
+  #remove any unringed - cover both upper and lower cas eto be sure 
+  data <- droplevels(subset(data, bto_ring != 'unringed'))
+  data <- droplevels(subset(data, bto_ring != 'UNRINGED'))
+  
+  #keep just those in wytham_core ?
+  data <- droplevels(subset(data, location == 'Wytham_Core'))
+  #remove those without pnum
+  data <- droplevels(subset(data, Pnum != 'NA'))
+  #remove retraps? - because only need info of chicks in nest and they're always new?
+  #just keep N 
+  # data <- droplevels(subset(data, retrap == 'N'))
+  #also only keep birds age 1 - because get adults from other dataset??
+  data <- droplevels(subset(data, age == 1))
+  #just keep years from 1960 - breeding data doesn't go earlier than that 
+  data <- droplevels(subset(data, yr > 1959))
+  #remove UNRRUNT from bto_ring?
+  data <- droplevels(subset(data, bto_ring != 'UNRRUNT'))
+  
+  #REMOVE SOME GTITS
+  #remove some because obvs some errors - maybe come back and work out if can keep?
+  #are all duplicated assoc with different pnum each time?
+  doubles <- c('VF64204', 'TK27605', 'TK27604', 'TK27508', 'TL39500')
+  data <- droplevels(subset(data, !(bto_ring %in% doubles)))
+  
+  #remove individuals with bto_ring number 400 - can't be correct (Pnum 19981MP49)
+  data <- droplevels(subset(data, bto_ring != '400'))
+  
+  
+  #REMOVE SOME BTITS
+  #remove bto_rings - 
+  remove_btit_rings <- c('V729349', 'E587236', 'E906508', 'E985206', 'KJ72884', 'JN32266')
+  #are parents of broods (because have sex) but listed as age 1 so treated as young 
+  #so end up as own parents when merged with breeding data 
+  data <- droplevels(subset(data, !(bto_ring %in% remove_btit_rings)))
+  
+  #2 have 2 entries
+  #are all duplicated assoc with different pnum each time?
+  doubles_btit <- c('F491535', 'T641298')
+  #remove some because obvs some errors - maybe come back and work out if can keep?
+  data <- droplevels(subset(data, !(bto_ring %in% doubles_btit)))
+  
+  #GTITs recorded in both early and late ringing data, but with different parents each time 
+  #remove in all ringing data 
+  #remove some because obvs some errors - same indiv diff parents etc - 
+  #same brood id's recorded in 2013 and 2015, with different parents
+  #maybe come back and work out if can keep?
+  #TX42804, TX42802, TX42806, TX42803, TX42801, TX42805, TX42807, TX42808
+  double_reported_twice <- c('TX42804', 'TX42802', 'TX42806', 'TX42803', 'TX42801', 'TX42805', 
+                             'TX42807', 'TX42808')
+  data <- droplevels(subset(data, !(bto_ring %in% double_reported_twice)))
+  
+  #this father is listed as age 1, but is not possible, so change to NA
+  data$age[data$pnum == '20002B159' & data$bto_ring == 'VF64204'] <- NA
+  
+  #get rid of pnum 19981O87 - mother is listed as age 1 and age 6 in 1 year
+  #her other pnum is listed in breeding data so keeping that one,
+  #just getting rid of this one 
+  data <- droplevels(subset(data, pnum != '19981O87'))
+  
+  return(data) 
+}
+
+
+#' Returns clean ringing data from new data (post-2013)
+#
+#' @param data Wytham breeding data.
+#' @return  dataset clean and standardised.
+
+clean_ringing_data_2 <- function(data){
+  
+  #make all ring names upper case
+  data$Ring <- toupper(data$Ring)
+  
+  data$Spec <- as.factor(data$Spec)
+  data$Sex <- as.factor(data$Sex)
+  data$Place <- as.factor(data$Place)
+  data$Site <- as.factor(data$Site) #site is nest box I think
+  
+  #get rid of time from date and just keep year
+  data$Date <- substr(data$Date, 7, 10) 
+  data$Date <- as.factor(data$Date)
+  
+  
+  #get rid of 2013 because that is in other data as well
+  data <- droplevels(subset(data, Date != '2013'))
+  
+  #just keep N 
+  data <- droplevels(subset(data, Rtype == 'N'))
+  #also only keep birds age 1 - because get adults from other dataset??
+  data <- droplevels(subset(data, Age == 1))
+  #just keep those from WYT
+  data <- droplevels(subset(data, Place == 'WYT'))
+  
+  #get rid of those with no Ring 
+  data <- droplevels(subset(data, !is.na(Ring)))
+  #orunringed
+  data <- droplevels(subset(data, Ring != 'UNRINGED'))
+  
+  
+  #BTIT doubles in Ring number 
+  #are all duplicated assoc with different pnum each time?
+  doubles2_btit <- c("AVL4793", "AVL4794", "AVL4795", "AVL4796", "AVL4797", "AVL4798")
+  #are one brood ringed age 1 in 2 boxes (EX73 and O257) in same year, surely must be wrong?
+  #just remove all 
+  data <- droplevels(subset(data, !(Ring %in% c(doubles2_btit))))
+  
+  #GTITs recorded in both early and late ringing data, but with different parents each time 
+  #remove some because obvs some errors - same indiv diff parents etc - 
+  #same brood id's recorded in 2013 and 2015, with different parents
+  #maybe come back and work out if can keep?
+  #TX42804, TX42802, TX42806, TX42803, TX42801, TX42805, TX42807, TX42808
+  double_reported_twice <- c('TX42804', 'TX42802', 'TX42806', 'TX42803', 'TX42801', 'TX42805', 
+                             'TX42807', 'TX42808')
+  data <- droplevels(subset(data, !(Ring %in% double_reported_twice)))
+  
+  return(data)
+  
+}
+
