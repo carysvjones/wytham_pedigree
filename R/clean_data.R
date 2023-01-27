@@ -359,3 +359,11 @@ clean_ringing_data_2 <- function(data){
   
 }
 
+
+#' Find duplicated laying dates - keeping both
+#' 
+#' @param x Factor
+#' @return ....
+
+isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
+
