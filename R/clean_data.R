@@ -6,7 +6,9 @@
 
 # DEPENDENCIES ─────────────────────────────────────────────────────────────── #
 
-box::use()
+box::use(magrittr[`%>%`])
+box::use(dplyr)
+
 
 # FUNCTIONS ────────────────────────────────────────────────────────────────── #
 
@@ -14,7 +16,7 @@ box::use()
 #' Returns clean breeding data.
 #'
 #' @param data Wytham breeding data.
-#' @return dataset clean and standardised 
+#' @return dataset clean. 
 
 clean_breeding_data <- function(data){
   
