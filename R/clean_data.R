@@ -22,8 +22,6 @@ clean_breeding_data <- function(data){
   
   #factorise columns
   data <- data %>%
-    dplyr::mutate_at(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
-                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor) %>%
     dplyr::mutate(Lay.date = as.Date(data$Lay.date, '%d / %m / %Y'),
                   Hatch.date = as.Date(data$Hatch.date, '%d / %m / %Y'),
                   #make all ring names upper case
@@ -32,11 +30,13 @@ clean_breeding_data <- function(data){
                   #make a column with the nest box code in
                   nest.box = as.factor(substr(Pnum, start = 6, 15))) %>%
     #get rid of any mixed species
+    dplyr::mutate_at(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
+                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor) %>%
     dplyr::filter(Mixed.species != TRUE) %>%
     droplevels()
-                    
+    
+  #save this for later - for pedigree want to keep as many as possible                
   #data$Experiment.codes <- as.factor(data$Experiment.codes)
-
   #take out those that have NA for lay date
   # data <- droplevels(subset(data, !is.na(April.lay.date)))
   
