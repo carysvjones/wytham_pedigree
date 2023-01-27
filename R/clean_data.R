@@ -18,29 +18,25 @@ box::use()
 
 clean_breeding_data <- function(data){
   
-  #make all ring names upper case
-  data$Mother <- toupper(data$Mother)
-  data$Father <- toupper(data$Father)
-  
   #factorise columns
   data <- data %>%
     dplyr::mutate_at(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
-                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor)
-  
-  data$Lay.date <- as.Date(data$Lay.date, '%d / %m / %Y')
-  data$Hatch.date <- as.Date(data$Hatch.date, '%d / %m / %Y')
-  
+                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor) %>%
+    dplyr::mutate(Lay.date = as.Date(data$Lay.date, '%d / %m / %Y'),
+                  Hatch.date = as.Date(data$Hatch.date, '%d / %m / %Y'),
+                  #make all ring names upper case
+                  Mother = toupper(Mother),
+                  Father = toupper(Father),
+                  #make a column with the nest box code in
+                  nest.box = as.factor(substr(Pnum, start = 6, 15))) %>%
+    #get rid of any mixed species
+    dplyr::filter(Mixed.species != TRUE) %>%
+    droplevels()
+                    
   #data$Experiment.codes <- as.factor(data$Experiment.codes)
-  
-  #get rid of any mixed species
-  data <- droplevels(subset(data, Mixed.species != TRUE))
-  
+
   #take out those that have NA for lay date
   # data <- droplevels(subset(data, !is.na(April.lay.date)))
-
-  #make a column with the nest box code in...
-  data$nest.box <- substr(data$Pnum, start = 6, 15)
-  data$nest.box <- as.factor(data$nest.box)
   
   #after made nest box column adjust the section of some boxes
   #some are listed as unknown, but are within the sections of the woods
@@ -68,14 +64,20 @@ clean_breeding_data <- function(data){
   
   
   #take out those with section unknown and he
-  data <- droplevels(subset(data, Section != 'unknown' & Section != 'he'))
-  
-  
+  data <- data %>% 
+    dplyr::filter(Section != 'unknown' & Section != 'he') %>%
+  droplevels()
+
   #some individuals recorded as both species
   #20101O253 - has father as blue tit mother as great tit young as blue tits - get rid 
   #20071SW75 - mother and father need to change - mother = T176160, father = NA 
   #20071O74, mother should be V260632, father should be V260844, stay as blue tit 
-  data <- droplevels(subset(data, Pnum != '20101O253'))
+  data <- data %>%
+    #20101O253 - has father as blue tit mother as great tit young as blue tits - get rid 
+    dplyr::filter(Pnum != '20101O253' & 
+                    #20082W37 listed as blue tit but is actually great tit - something about nest take over so just get rid
+                    Pnum != '20082W37') %>%
+    droplevels()
   
   #first have to add them as factor levels
   levels(data$Mother) <- c(levels(data$Mother), 'T176160', 'V260632')
@@ -86,30 +88,24 @@ clean_breeding_data <- function(data){
   
   data$Father[data$Pnum == '20071SW75'] <- NA
   data$Father[data$Pnum == '20071O74'] <- 'V260844'
-  
-  #20082W37 listed as blue tit but is actually great tit - something about nest take over so just get rid
-  data <- droplevels(subset(data, Pnum != '20082W37'))
-  
+
   
   ###GREAT TIT SPECIFIC CLEANING 
   
-  #get rid of Pnum 20081EX27, 20051EX66
-  #mother recorded twice in 1 year lay date same day but in different boxes...
-  data <- droplevels(subset(data, Pnum != '20081EX27'))
-  #same here - am keeping attempts where we know father too...
-  data <- droplevels(subset(data, Pnum != '20051EX66'))
-  
-  # #remove E985078 - is in there as male and female.... 3 times as male so remove one where it is mother
-  #use Pnum to get rid 
-  data <- droplevels(subset(data, Pnum != '20081CP35'))
-  #remove 20181EX20 - has same ID recorded for mother and father
-  data <- droplevels(subset(data, Pnum != '20181EX20'))
-  
-  #remove this Pnum cause causes trouble later on...
-  #get rid - 20182EX14 
-  #this pnum says no fledglings recorded, and all same fledglings are named under another pnum (20181EX14)
-  data <- droplevels(subset(data, Pnum != '20182EX14'))
-  
+  data <- data %>%
+    dplyr::filter(
+      #get rid of Pnum 20081EX27, 20051EX66
+      #mother recorded twice in 1 year lay date same day but in different boxes...
+      Pnum != '20081EX27' &
+      #same here - am keeping attempts where we know father too...
+      Pnum != '20051EX66' &
+      #remove E985078 - is in there as male and female.... 3 times as male so remove one where it is mother
+      Pnum != '20081CP35' &
+      #remove 20181EX20 - has same ID recorded for mother and father
+      Pnum != '20181EX20' &
+      #20182EX14 this pnum says no fledglings recorded, and all same fledglings are named under another pnum (20181EX14)
+      Pnum != '20182EX14')
+      
   #check if any other parents are listed as both mother and father?
   # breed_gtit_noFNA <- droplevels(subset(breed_gtit, !(is.na(Father))))
   # breed_gtit_noFNA$Father[breed_gtit_noFNA$Father %in% breed_gtit$Mother]
