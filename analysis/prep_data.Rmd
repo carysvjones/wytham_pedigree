@@ -1,0 +1,1189 @@
+---
+title: "prep_data"
+author: "Carys Jones"
+date: '2023-01-26'
+output: html_document
+---
+
+# Dependencies
+```{r}
+box::use(.. / R / dirs[dirs])
+box::use(clean = ../ R / clean_data)
+
+box::use(readr[read_csv])
+box::use(ggplot2[...])
+box::use(dplyr)
+box::use(moments)
+box::use(kinship2)
+box::use(sf)
+box::use(tidyr)
+box::use(pedantics)
+box::use(magrittr[`%>%`])
+
+
+
+
+# install.packages('./pedantics_1.7.tar.gz', repos = NULL, type = 'source')
+```
+
+
+
+
+PREPARE PEDIGREE
+
+
+```{r}
+
+# MERGE BREEDING AND RINGING DATA -----------------------------------------
+# READ IN - Breeding Data -------------------------------------------------
+
+#read in data 1960-2020
+breed <- read.csv(file.path(dirs$data, 'LT_breeding_data_greti_bluti_1960_2020.csv'), na.strings=c("", "NA"))
+nrow(breed) #39530
+
+#read in 2021 data 
+breed2021 <- read.csv(file.path(dirs$data, 'ebmp_broods_2021.csv'), na.strings=c("", "NA")) %>%
+  #add column with year
+  dplyr::mutate(year = as.integer(2021))
+nrow(breed2021) #1209
+
+#bind 2
+breed <- rbind(breed, breed2021)
+nrow(breed) #40739
+
+# clean dataset 
+breed2 <- clean$clean_breeding_data(breed)
+nrow(breed2) #37158
+summary(breed2$April.lay.date)
+
+
+write.csv(breed, file = file.path(dirs$data, 'LT_breeding_data_greti_bluti_1960_2022-CLEAN.csv'), 
+                                  row.names = F)
+
+
+# GTIT Breeding Data ------------------------------------------------------
+
+#subset to just keep great tits 
+breed_gtit <- breed %>% 
+  dplyr::filter(Species == 'g')
+nrow(breed_gtit) #16966
+
+#for now remove those 2014-2020, because ringing data in this data set only till 2013
+breed_gtit_early <- breed_gtit %>% 
+  dplyr::filter(year < 2014)
+
+#quick summaries
+nrow(breed_gtit_early) #14582
+length(unique(breed_gtit_early$Pnum)) #14582
+length(unique(breed_gtit_early$Mother)) #7200
+summary(breed_gtit_early$Mother) #2853 mothers unknown  
+length(unique(breed_gtit_early$Father)) #6039
+summary(breed_gtit_early$Father) #5442
+
+
+# READ IN - Ringing Data up to 2013 --------------------------------------------------
+ring <- read.csv(file.path(dirs$data, 'legacy_ringing_records_GT&BT_up_to_2013.csv'), na.strings=c("", "NA")) %>%
+  #clean with function
+  clean$clean_ringing_data(.) %>%
+  #keep only some columns
+  dplyr::select('id', 'Pnum', 'site', 'grid_ref', 'location', 'retrap', 'date_time',
+                  'age', 'sex', 'bto_species_code', 'bto_ring', 'yr', 'nb')
+nrow(ring) #151785
+
+write.csv(ring, file = file.path(dirs$data,'legacy_ringing_records_GT&BT_up_to_2013-CLEAN.csv'),
+          row.names = F)
+
+
+# GTIT - Ringing data up to 2013 -----------------------------------------------
+
+#just keep great tits 
+ring_gtit <- ring %>% dplyr::filter(bto_species_code == 'GRETI')
+
+#quick summaries
+nrow(ring_gtit) #78791
+length(unique(ring_gtit$Pnum)) #10722
+length(unique(ring_gtit$nb)) #1092  
+length(unique(ring_gtit$bto_ring)) #78791
+
+
+# GTIT MERGE - ring and breed up to 2013 ---------------------------------------
+
+#merge both datasets by Pnum
+breed_ring_gtit <- merge(breed_gtit_early, ring_gtit, by = 'Pnum', all = T) %>%
+  #filter out those with no bto_ring
+  dplyr::filter(!is.na(bto_ring)) %>%
+  #keep only some columns
+  dplyr::select('bto_ring', 'Father', 'Mother', 'sex', 'yr', 'nest.box',
+                'Pnum', 'April.lay.date', 'Num.fledglings', 'Clutch.size') %>%
+  dplyr::rename('year' = 'yr')
+
+nrow(breed_ring_gtit) #78791
+length(unique(breed_ring_gtit$Pnum)) #10722
+length(unique(breed_ring_gtit$bto_ring)) #78791 
+length(unique(breed_ring_gtit$Mother)) #6376 
+length(unique(breed_ring_gtit$Father)) #5652 
+
+
+# READ IN - Ringing data 2013 onwards -------------------------------------
+
+ring2 <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_2013-20.csv'),
+                  na.strings=c("", "NA"))
+   
+ring2021 <- read.csv(file.path(dirs$data, 'ebmp_ringing_data_2021.csv'),
+                  na.strings=c("", "NA")) 
+
+nrow(ring2) #51566
+nrow(ring2021) #8197
+
+#bind
+ring2 <- rbind(ring2, ring2021)
+nrow(ring2) #59763
+
+ring2 <- clean$clean_ringing_data_2(ring2) 
+nrow(ring2) #30851
+
+#make Pnum using date and nest box 
+ring2 <- ring2 %>% dplyr::mutate(Pnum = paste0(Date, '1', Site)) %>%
+  dplyr::select('Rtype', 'Ring', 'Spec', 'Age', 'Sex', 'Date', 'Place', 'Site', 'Pnum')
+
+write.csv(ring2, file = file.path(dirs$data,'ebmp_database_ringing_record_export_GT&BT_2013-20-CLEAN.csv'),
+          row.names = F)
+
+
+# GTIT - Ringing data 2013 onwards ----------------------------------------
+
+#keep just great tits
+ring2_gtit <- ring2 %>%
+  dplyr::filter(Spec == 'GRETI')
+
+nrow(ring2_gtit) #11176
+
+
+# GTIT READ IN - Breed data - 2013 onwards -------------------------------------
+breed_gtit_late <- breed_gtit %>%
+  dplyr::filter(year > 2013)
+
+nrow(breed_gtit_late) #2384
+
+
+# GTIT - MERGE 2 RINGING DATA - 2013 onwards ----------------------------------------------------
+
+#rename columns in ring2 to match ring
+ring2_gtit <- ring2_gtit %>%
+  dplyr::rename('year' = 'Date',
+                'nest.box' = 'Site',
+                'bto_ring' = 'Ring')
+
+#merge by Pnum i added
+breed_ring_gtit2 <- merge(breed_gtit_late, ring2_gtit, by = c('Pnum', 'year', 'nest.box'), all.x = T)%>%
+  dplyr::filter(!is.na(bto_ring)) %>%
+  dplyr::select('bto_ring', 'Father', 'Mother', 'Sex', 'year', 'nest.box',
+                                              'Pnum', 'April.lay.date', 'Num.fledglings', 'Clutch.size') %>%
+  dplyr::rename('sex' = 'Sex')
+
+nrow(breed_ring_gtit2) #10856
+
+
+# GTIT - BIND ALL YEARS ----------------------------------------------------------
+
+nrow(breed_ring_gtit) + nrow(breed_ring_gtit2) #89647 total 
+breed_ring_gtit_all <- rbind(breed_ring_gtit, breed_ring_gtit2)
+nrow(breed_ring_gtit_all) #89647 
+
+#rename some 
+breed_ring_gtit_all <- breed_ring_gtit_all %>%
+  dplyr::rename('birth_lay_date' = 'April.lay.date',
+                'fledglings_born_with' = 'Num.fledglings',
+                'clutch_size_born_with' = 'Clutch.size',
+                'nest_box_born_in' = 'nest.box',
+                'year_born' = 'year')
+
+levels(breed_ring_gtit_all$sex) <- c(levels(breed_ring_gtit_all$sex), 'male', 'female')
+breed_ring_gtit_all$sex[breed_ring_gtit_all$sex == "M"] <- "male"
+breed_ring_gtit_all$sex[breed_ring_gtit_all$sex == "F"] <- "female"
+length(breed_ring_gtit_all$bto_ring) #89647 
+
+
+# ADD MISSING SEX TO PEDIGREE GTIT
+
+#could get sex for some id from when they are older?
+#how many have their ring number in pedigree, and are also mothers
+breed_ring_gtit_all$sex[breed_ring_gtit_all$bto_ring %in% breed_gtit$Mother] <- 'female'
+breed_ring_gtit_all$sex[breed_ring_gtit_all$bto_ring %in% breed_gtit$Father] <- 'male'
+
+summary(as.factor(breed_ring_gtit_all$sex)) #79453 NAs
+
+#some have no nest box born in - but have Pnum
+#so can take nest box from Pnum 
+breed_ring_gtit_all <- breed_ring_gtit_all %>%
+  dplyr::mutate(nest_box_born_in = substr(Pnum, 6, 15))
+summary(as.factor(breed_ring_gtit_all$nest_box_born_in)) #no NA's anymore
+
+write.csv(breed_ring_gtit_all, file = file.path(dirs$data,'GTIT-pedigree_merged_data_all_years.csv'), row.names = F)
+
+# .-------------------------------------------------------------------------
+
+
+# MAKE PEDIGREES ----------------------------------------------------------
+
+# GTIT --------------------------------------------------------------------
+# MAKE SHORT PEDIGREE -----------------------------------------------------
+
+#make subset of just the first 3 columns 
+ped_gtit_short <- breed_ring_gtit_all %>%
+  dplyr::select('bto_ring', 'Mother', 'Father') %>%
+  dplyr::rename('id' = 'bto_ring',
+         'dam' = 'Mother',
+         'sire' = 'Father')
+
+head(ped_gtit_short)
+nrow(ped_gtit_short) #89647
+
+
+#fix the pedigree
+ped_gtit_short_ext_fix <- pedantics::fixPedigree(ped_gtit_short)
+
+#save this as pedigree
+write.csv(ped_gtit_short_ext_fix, file = file.path(dirs$data,'GTIT-pedigree-FULL.csv'), row.names = F)
+
+# subset those with LD
+pedigree_all_big <- ped_gtit_short_ext_fix_LD %>%
+  dplyr::filter(!is.na(LD_num)) %>%
+  droplevels()
+nrow(pedigree_all_big) #14559
+
+#get pedigree stats
+# pedigree_stats <- pedantics::pedigreeStats(ped_gtit_short_ext_fix, retain = 'informative')
+# pedantics::pedStatSummary(pedigree_stats)
+# nrow(pedigree_stats$analyzedPedigree) #14559
+# saveRDS(pedigree_stats, file = file.path(dirs$data,'GTIT-pedStatSummary-full_output.rds'), row.names = F)
+
+write.csv(pedigree_all_big, file = file.path(dirs$data,'GTIT-pedigree_final_subset.csv'), row.names = F)
+
+```
+
+
+PREPARE DATA
+
+
+```{r}
+# GREAT TITS --------------------------------------------------------------
+
+
+# READ IN PEDIGREE DATA ---------------------------------------------------
+ped_gtit_final <- read.csv(file.path(dirs$data, 'GTIT-pedigree_final_subset.csv'), na.strings=c("", "NA"))
+
+nrow(ped_gtit_final) #14559
+length(unique(ped_gtit_final$id)) #14559
+
+
+# READ IN BREEDING DATA ---------------------------------------------------
+#breeding data - is all Pnums and lay dates fledglings etc 
+
+breed <- read.csv(file.path(dirs$data,'LT_breeding_data_greti_bluti_1960_2021-CLEAN.csv'))
+
+breed_gtit <- breed %>%
+  dplyr::filter(Species == 'g')
+
+nrow(breed_gtit)
+
+#get rid of those with experiemnt codes
+breed_gtit <- breed_gtit[is.na(breed_gtit$Experiment.codes),] #do this before!!!
+nrow(breed_gtit) #15192
+length(unique(breed_gtit$Mother)) #7688
+length(unique(breed_gtit$Father)) #6432
+length(unique(breed_gtit$Pnum)) #15192
+
+#get rid of those where Mother is NA
+breed_gtit_noNA <- droplevels(subset(breed_gtit, !is.na(Mother)))
+nrow(breed_gtit_noNA) #11966
+length(unique(breed_gtit_noNA$Mother)) #7687
+
+ggplot(breed_gtit_noNA, aes(x = year)) + 
+  geom_histogram(binwidth = 1, fill = 'light grey', colour = 'black')
+
+#get rid of some columns to make it easier to work with
+breed_gtit_noNA <- breed_gtit_noNA[ , c('year', 'Pnum', 'Section', 'April.lay.date', 'April.hatch.date',
+                                        'Clutch.size', 'Num.fledglings', 'Father', 'Mother', 'nest.box')]
+
+
+
+# ADD AGE  ----------------------------------------------------------------
+
+#get age from data Joe sent
+ages <- read.csv('./raw-data/age_data.csv', na.strings = "NA")
+head(ages)
+summary(as.factor(ages$Est_DOB))
+
+#how many are in my data?
+#mothers
+length(unique(breed_gtit_noNA$Mother[breed_gtit_noNA$Mother %in% ages$Ring])) #7127
+#fathers
+length(unique(breed_gtit_noNA$Father[breed_gtit_noNA$Father %in% ages$Ring])) #6030
+
+#merge to get mothers age, keep all of x 
+breed_gtit_noNA_age <- merge(breed_gtit_noNA, ages, by.x = 'Mother', by.y = 'Ring', all.x = T)
+nrow(breed_gtit_noNA_age) #11966
+length(unique(breed_gtit_noNA_age$Mother)) #7687
+
+#get age at breeding attempt for those that know DOB
+breed_gtit_noNA_age$Fem_breed_age <- breed_gtit_noNA_age$year - breed_gtit_noNA_age$Est_DOB
+length(unique(subset(breed_gtit_noNA_age, is.na(Fem_breed_age))$Mother)) #NA are just those with unkown DOB
+
+#deal with ones with impossible age and NA
+summary(as.factor(breed_gtit_noNA_age$Fem_breed_age)) # some less than 1 and 1 23, 756 NAs
+false_ageFem <- subset(breed_gtit_noNA_age, Fem_breed_age < 1 | 
+                         Fem_breed_age == 23 | 
+                         is.na(Fem_breed_age))$Mother
+#number of individuals that are definitely wrong or NA
+length(false_ageFem) #800
+length(unique(false_ageFem)) #593
+length(unique(breed_gtit_noNA_age$Mother)) 
+(length(unique(false_ageFem))/length(unique(breed_gtit_noNA_age$Mother))) * 100 #7.7%
+#number of records that those individuals have 
+nrow(subset(breed_gtit_noNA_age, (Mother %in% c(false_ageFem)))) #857
+nrow(breed_gtit_noNA_age) #11966
+(nrow(subset(breed_gtit_noNA_age, (Mother %in% c(false_ageFem)))) / 
+    nrow(breed_gtit_noNA_age)) * 100 #7.2%
+
+#find these ones earliest breeding year
+#and make their guess of DOB be 1 year before that 
+#asssume that when first recorded breeding it is their 1st year actually breeding
+#because usually don't move far to breed would likely have been recorded if they did nest
+#in a box befoe
+for(i in false_ageFem){
+  sub <- breed_gtit_noNA_age[!is.na(breed_gtit_noNA_age$Mother) &
+                               breed_gtit_noNA_age$Mother == i, ]
+  
+  #find earliest breeding_year recorded
+  breed_gtit_noNA_age$Est_DOB[!is.na(breed_gtit_noNA_age$Mother) &
+                                breed_gtit_noNA_age$Mother == i] <- rep(min(sub$year) - 1, nrow(sub))
+}
+
+
+#one recorded as 10, is wrong, 
+#is recorded as 1 in 2009 and in 2015, more likely to be born in 2015
+#change it 
+subset(breed_gtit_noNA_age, Fem_breed_age == 10)
+subset(breed_gtit_noNA_age, Mother == 'TP27299')
+
+breed_gtit_noNA_age$Est_DOB[breed_gtit_noNA_age$Mother == 'TP27299'] <- 2015
+
+#recalc age 
+breed_gtit_noNA_age$Fem_breed_age <- breed_gtit_noNA_age$year - breed_gtit_noNA_age$Est_DOB
+summary(as.factor(breed_gtit_noNA_age$Fem_breed_age)) #all are sensible now!
+#    1    2    3    4    5    6    7    8    9 
+# 6344 3125 1436  646  284   83   37    8    3  
+
+
+nrow(breed_gtit_noNA_age) #11966
+length(unique(breed_gtit_noNA_age$Pnum)) #11966
+length(unique(breed_gtit_noNA_age$Mother)) #7687
+
+
+
+#get rid of DOB.KNown and Max.DOB columns
+breed_gtit_noNA_age <- subset(breed_gtit_noNA_age, select = -c(DOB.Known, Max.DOB, DOB))
+#rename DOB column for FDOB
+breed_gtit_noNA_age <-rename(breed_gtit_noNA_age, 'Fem_DOB' = 'Est_DOB')
+
+
+
+# GET RID MOTHER KNOWN 2ND BROODS -----------------------------------------------
+
+#find any mothers recorded twice in any year
+#how many mothers have >1 in a given year 
+
+isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
+dupl_M <- breed_gtit_noNA_age %>%
+  group_by(., year) %>%
+  filter(., isdup(Mother))
+length(dupl_M$Mother) #512
+length(unique(dupl_M$Mother)) #242 - number of females that repeat nests - can do so in >1 year
+
+#how many double breeding attempts in each year
+dupl_M_summ <- dupl_M %>%
+  group_by(., year) %>%
+  summarise(., num = length(unique(Mother)),
+            total_attempts = length(Mother))
+sum(dupl_M_summ$num) #254 - instances of repeated nests over all years
+
+#how many mothers nest >2 times in one year
+dupl_M_more <- dupl_M %>%
+  group_by(., year, Mother) %>%
+  summarise(., attempts = length(unique(Pnum)))
+head(dupl_M_more)
+dupl_M_more$attempts <- as.factor(dupl_M_more$attempts)
+summary(dupl_M_more$attempts)
+#   2   3   4 
+# 251   2   1
+
+
+#mothers keep first broods
+dupl_M_first <- dupl_M %>%
+  group_by(., Mother, year) %>%
+  slice_min(., order_by = April.lay.date)
+length(unique(dupl_M_first$Mother)) #242 
+length(dupl_M_first$Mother) #254
+length(unique(dupl_M_first$Pnum)) #254 
+
+
+#then from data set of all dupl find Pnum of all others apart from these 1st broods
+#then will be all 2nd 3rd and 4th broods in one group 
+dupl_M_toremove <- dupl_M$Pnum[!(dupl_M$Pnum %in% dupl_M_first$Pnum)]
+length(unique(dupl_M_toremove)) #258
+
+#remove those Pnums from data
+breed_gtit_noNA_age_no2M <- breed_gtit_noNA_age[!(breed_gtit_noNA_age$Pnum %in% dupl_M_toremove) , ]
+nrow(breed_gtit_noNA_age_no2M) #11708
+
+
+
+# GET RID FATHER KNOWN 2ND BROODS -----------------------------------------
+#should I remove these? cause are known second broods?
+dupl_F <- subset(breed_gtit_noNA_age_no2M, !is.na(Father)) %>%
+  group_by(., year) %>%
+  filter(., isdup(Father))
+length(dupl_F$Father) #42
+length(unique(dupl_F$Father)) #21 - number of females that repeat nests - can do so in >1 year
+
+#how many double breeding attempts in each year
+dupl_F_summ <- dupl_F %>%
+  group_by(., year) %>%
+  summarise(., num = length(unique(Father)),
+            total_attempts = length(Father))
+sum(dupl_F_summ$num) #21 - instances of repeated nests over all years
+
+#how many mothers nest >2 times in one year
+dupl_F_more <- dupl_F %>%
+  group_by(., year, Father) %>%
+  summarise(., attempts = length(unique(Pnum)))
+head(dupl_F_more)
+dupl_F_more$attempts <- as.factor(dupl_F_more$attempts)
+summary(dupl_F_more$attempts)
+#   2  
+# 21
+
+#mothers keep first broods
+dupl_F_first <- dupl_F %>%
+  group_by(., Father, year) %>%
+  slice_min(., order_by = April.lay.date)
+length(unique(dupl_F_first$Father)) #21 
+length(dupl_F_first$Father) #23
+length(unique(dupl_F_first$Pnum)) #23 
+
+
+#then from data set of all dupl find Pnum of all others apart from these 1st broods
+#then will be all 2nd 3rd and 4th broods in one group 
+dupl_F_toremove <- dupl_F$Pnum[!(dupl_F$Pnum %in% dupl_F_first$Pnum)]
+length(unique(dupl_F_toremove)) #19 
+
+#remove those Pnums from data
+breed_gtit_noNA_age_no2Mno2F <- breed_gtit_noNA_age_no2M[
+  !(breed_gtit_noNA_age_no2M$Pnum %in% dupl_F_toremove) , ]
+nrow(breed_gtit_noNA_age_no2Mno2F) #11689
+
+
+
+# GET RID LATE 2ND BROODs -------------------------------------------------
+
+#in original dataset, when get rid of all known 2nd lay dates
+#use left over dataset to work out first 5% of lay dates,
+#and get rid of any more than 30 days after them
+nrow(breed_gtit_noNA_age_no2Mno2F) #11689
+
+output <- NULL
+#Find first 5% in each year then add 30
+for(i in 1960:2021){
+  data <- subset(breed_gtit_noNA_age_no2Mno2F, year == i)
+  #cut off day -
+  cut_off <- sort(data$April.lay.date)[nrow(data)*0.05] + 30
+  #only keep dates on and before this cut off
+  data_sub <- data[data$April.lay.date <= cut_off, ]
+  
+  output <- rbind(output, data_sub)
+}
+
+nrow(output) #11560
+
+breed_gtit_noNA_age_no2M_no2F_noLate <- output
+
+# ADD COLUMN WITH MOTHER AND FATHER ID AND BIRTH PNUM ---------------------
+
+#merge with pedigree -#to get mother and father (of the mother!) 
+nrow(breed_gtit_noNA_age_no2M_no2F_noLate) #11479
+breed_gtit_noNA_age_no2M_no2F_noLate_par <- 
+  merge(breed_gtit_noNA_age_no2M_no2F_noLate, ped_gtit_final, by.x = 'Mother', by.y = 'id', all.x = T)
+nrow(breed_gtit_noNA_age_no2M_no2F_noLate_par) #11560
+#if don't keep all ones that are missing are ones where have no offspring surviving 
+#and no parents recorded 
+
+#rename so know they are the females parents
+breed_gtit_noNA_age_no2M_no2F_noLate_par <- rename(breed_gtit_noNA_age_no2M_no2F_noLate_par,
+                                                   'Fem_mother' = 'dam')
+breed_gtit_noNA_age_no2M_no2F_noLate_par <- rename(breed_gtit_noNA_age_no2M_no2F_noLate_par,
+                                                   'Fem_father' = 'sire')
+
+sum(is.na(breed_gtit_noNA_age_no2M_no2F_noLate_par$Fem_mother)) #6190 unknown mothers
+sum(!is.na(breed_gtit_noNA_age_no2M_no2F_noLate_par$Fem_mother)) #5370 known mothers 
+
+sum(is.na(breed_gtit_noNA_age_no2M_no2F_noLate_par$Fem_father)) #6775 unknown fathers
+sum(!is.na(breed_gtit_noNA_age_no2M_no2F_noLate_par$Fem_father)) #4785 known fathers
+
+nrow(breed_gtit_noNA_age_no2M_no2F_noLate_par) #11560
+
+
+#rename data because name has got too long!
+gtit_data <- breed_gtit_noNA_age_no2M_no2F_noLate_par
+nrow(gtit_data) #11560
+
+#get natal Pnum??
+#mothers should be recorded in ringing data when ringed in nest as chicks (if not immigrants)
+#so can match back to get their natal pnum and nest box
+ring <- read.csv('./raw-data/legacy_ringing_records_GT&BT_up_to_2013-CLEAN.csv')
+ring2 <- read.csv('./raw-data/ebmp_database_ringing_record_export_GT&BT_2013-21-CLEAN.csv')
+
+
+head(ring)
+#keep only some columns
+ring_sub <- ring[ , c('bto_ring', 'Pnum', 'nb')]
+#rename those columns as natal
+ring_sub <- rename(ring_sub, 'natal_nestbox' = 'nb')
+ring_sub <- rename(ring_sub, 'natal_Pnum' = 'Pnum')
+head(ring_sub)
+nrow(ring_sub) #151785
+
+head(ring2)
+#keep only some columns
+ring2_sub <- ring2[ , c('Ring', 'Pnum', 'Site')]
+#rename those columns as natal
+ring2_sub <- rename(ring2_sub, 'natal_nestbox' = 'Site')
+ring2_sub <- rename(ring2_sub, 'natal_Pnum' = 'Pnum')
+ring2_sub <- rename(ring2_sub, 'bto_ring' = 'Ring')
+head(ring2_sub)
+nrow(ring2_sub) #30851
+
+#paste these 2 together
+ring_all <- rbind(ring_sub, ring2_sub)
+nrow(ring_all) #182636
+
+length(gtit_data$Mother[gtit_data$Mother %in% ring_all$bto_ring]) #5762
+gtit_data <- merge(gtit_data, ring_all, by.x = 'Mother', by.y = 'bto_ring', all.x = T)
+summary(as.factor(gtit_data$natal_nestbox))
+summary(as.factor(gtit_data$natal_Pnum))
+#rename to be females
+gtit_data <- rename(gtit_data, 'Fem_natal_nestbox' = 'natal_nestbox')
+gtit_data <- rename(gtit_data, 'Fem_natal_Pnum' = 'natal_Pnum')
+
+head(gtit_data)
+
+#rename year as breeding year - going to leave id as mother now
+# gtit_data <- rename(gtit_data, 'id' = 'Mother')
+gtit_data <- rename(gtit_data, 'breeding_year' = 'year')
+
+#need to only keep those where know breeding age
+summary(as.factor(gtit_data$Fem_breed_age)) #none
+
+gtit_data_sub <- gtit_data
+
+# split age into yearlings and adults 
+#females
+gtit_data_sub$Fbreeding_age_group <- numeric(nrow(gtit_data_sub))
+gtit_data_sub$Fbreeding_age_group[gtit_data_sub$Fem_breed_age == 1] <- 'Yearling'
+gtit_data_sub$Fbreeding_age_group[gtit_data_sub$Fem_breed_age > 1] <- 'Adult'
+# #males
+# gtit_data_sub$Mbreeding_age_group <- numeric(nrow(gtit_data_sub))
+# gtit_data_sub$Mbreeding_age_group[gtit_data_sub$Mal_breed_age == 1] <- 'Yearling'
+# gtit_data_sub$Mbreeding_age_group[gtit_data_sub$Mal_breed_age > 1] <- 'Adult'
+# gtit_data_sub$Mbreeding_age_group[is.na(gtit_data_sub$Mal_breed_age)] <- NA
+
+summary(as.factor(gtit_data_sub$Fbreeding_age_group)) #Adult 5395, Yearling 6165
+# summary(as.factor(gtit_data_sub$Mbreeding_age_group)) #Adult 4496, Yearling 4664
+
+
+
+# MAKE THINGS FACTORS -----------------------------------------------------
+
+nrow(gtit_data_sub) #11560
+#what do I want to make factors? - id, sex, year, section, DOB, age , nest.box
+gtit_data_sub$Mother <- as.factor(gtit_data_sub$Mother)
+gtit_data_sub$breeding_yearF <- as.factor(gtit_data_sub$breeding_year)
+gtit_data_sub$Section <- as.factor(gtit_data_sub$Section)
+gtit_data_sub$Fbreeding_age_group <- as.factor(gtit_data_sub$Fbreeding_age_group)
+# gtit_data_sub$Mbreeding_age_group <- as.factor(gtit_data_sub$Mbreeding_age_group)
+gtit_data_sub$nest.box <- as.factor(gtit_data_sub$nest.box)
+gtit_data_sub$Fem_mother <- as.factor(gtit_data_sub$Fem_mother)
+gtit_data_sub$Fem_father <- as.factor(gtit_data_sub$Fem_father)
+gtit_data_sub$Father <- as.factor(gtit_data_sub$Father)
+
+# gtit_data_sub$Mal_mother <- as.factor(gtit_data_sub$Mal_mother)
+# gtit_data_sub$Mal_father <- as.factor(gtit_data_sub$Mal_father)
+gtit_data_sub$Fem_natal_Pnum <- as.factor(gtit_data_sub$Fem_natal_Pnum)
+gtit_data_sub$Fem_natal_nestbox <- as.factor(gtit_data_sub$Fem_natal_nestbox)
+# gtit_data_sub$Mal_natal_Pnum <- as.factor(gtit_data_sub$Mal_natal_Pnum)
+# gtit_data_sub$Mal_natal_nestbox <- as.factor(gtit_data_sub$Mal_natal_nestbox)
+gtit_data_sub$Pnum <- as.factor(gtit_data_sub$Pnum)
+
+
+##
+#scale April lay date by year 
+LD_scale <- lm(April.lay.date ~ breeding_year, data = gtit_data_sub)
+summary(LD_scale)
+gtit_data_sub$April.lay.dateSCALED <- LD_scale$residuals
+plot(April.lay.dateSCALED ~ breeding_year, data = gtit_data_sub)
+
+
+##
+#mean centre lay date
+gtit_data_sub <- gtit_data_sub %>%
+  mutate(April.lay.dateCENTRE = scale(April.lay.date))
+mean(gtit_data_sub$April.lay.dateCENTRE) #1.084527e-16
+sd(gtit_data_sub$April.lay.dateCENTRE) #1
+
+
+##
+#get column with 0 or 1 if have same partner or not
+gtit_data_sub$same_partner <- numeric(nrow(gtit_data_sub))
+#subset by each id of mother where there are more than 1 unknown father 
+nrow(gtit_data_sub) #11560
+gtit_data_sub_allFathers <- droplevels(subset(gtit_data_sub, !is.na(Father)))
+nrow(gtit_data_sub_allFathers) #8907
+gtit_data_sub_summ_parents <- gtit_data_sub_allFathers %>%
+  group_by(., Mother) %>%
+  summarise(., partners = length(Father))
+#keep those that have >1 breeding attempts, where all fathers are known
+id_partners <- gtit_data_sub_summ_parents$Mother[gtit_data_sub_summ_parents$partners > 1]
+length(id_partners) #1897
+#subset data, to be just those with >1 breeding attempt and all fathers know
+gtit_data_sub_allFathers_multi <- gtit_data_sub_allFathers[gtit_data_sub_allFathers$Mother %in% id_partners,]
+nrow(gtit_data_sub_allFathers_multi) #4619
+length(unique(gtit_data_sub_allFathers_multi$Mother)) #1897
+#get summary for each mother here, how many breeding attempts and how many fathers
+id_parents_doubles <- gtit_data_sub_allFathers_multi %>%
+  group_by(., Mother) %>%
+  summarise(., attempts = length(Father),
+            fathers = length(unique(Father)))
+#now subset if have more breeding attempts than partners
+#because that means they will have had the same partner 
+parents_same_partner <- id_parents_doubles$Mother[id_parents_doubles$attempts > id_parents_doubles$fathers]
+gtit_data_sub_allFathers_multi[gtit_data_sub_allFathers_multi$id %in% parents_same_partner,]
+#get Pnums, so make sure it's just those individual lines
+#then make the same_partner column 1 
+Pnum_birds_same_partner <- gtit_data_sub_allFathers_multi$Pnum[gtit_data_sub_allFathers_multi$Mother %in% 
+                                                                 parents_same_partner]
+length(Pnum_birds_same_partner) #2055
+
+gtit_data_sub$same_partner[gtit_data_sub$Pnum %in% Pnum_birds_same_partner] <- 1
+gtit_data_sub$same_partner <- as.factor(gtit_data_sub$same_partner)
+summary(gtit_data_sub$same_partner) #0 = 9505, 1 = 2055
+
+
+
+
+
+# ADD SPATIAL DATA ----------------------------------------------
+
+#read in nest box data and use some classifcations of habitat 
+nestbox <- read.csv('./raw-data/nest box habitat data.csv')
+head(nestbox)
+nrow(nestbox) #1019
+
+#oak data - not for all boxes.... leave some with NA
+oak <- read.csv('./raw-data/Tit_data.csv')
+head(oak)
+nrow(oak)
+oak <- oak[ , c(1:22)]
+
+box_tree <- merge(nestbox, oak, by = 'Box', all.x = T)
+head(box_tree)
+nrow(box_tree) #1048
+
+#add occupancy and density and lidar data
+occupancy <- read.csv('./output/GTIT_occupancy_of_boxes.csv')
+head(occupancy)
+
+box_tree <- merge(box_tree, occupancy, by.x = 'Box', by.y = 'nest.box', all.x = T)
+head(box_tree)
+nrow(box_tree) #1019
+
+#territory needs to be differnet over years
+territory <- read.csv('./output/all_territory_estimates.csv')
+head(territory)
+nrow(territory) #16872
+territory <- territory[ , c(1,2,14,15)]
+#when merge keep all territory
+box_tree_terr <- merge(box_tree, territory, by.x = 'Box', by.y = 'nestbox', all.y = T)
+nrow(box_tree_terr) #16872
+
+
+#now merge with breeding data!
+#merge with breeding data - mothers only 
+#merge by Pnum
+gtit_data_sub_nb <- merge(gtit_data_sub, box_tree_terr, by = 'Pnum')
+nrow(gtit_data_sub_nb) #11526 - only a few hundred missing from before 
+
+#make habitat type a factor 
+gtit_data_sub_nb$habitat.type <- as.factor(gtit_data_sub_nb$habitat.type)
+
+summary(gtit_data_sub_nb)
+
+
+# SPATIAL MATRIX ----------------------------------------------------------
+
+# FINDING MIDPOINT IN SPACE FOR INDIVIDUALS -------------------------------
+
+#data set of all that have nest box
+nrow(gtit_data_sub_nb) #11526
+length(unique(gtit_data_sub_nb$Mother)) #7595
+
+summary(gtit_data_sub_nb$April.lay.date) #-5 to 59
+summary(gtit_data_sub_nb$April.hatch.date)#780 NAs
+summary(gtit_data_sub_nb$Clutch.size) #43 NAs
+
+
+#if individuals have multiple breeding attempts
+#need to find midpoint location of nest boxes
+#so can use that to make matrix of distance between all individuals
+
+#look at how many use >1 box
+gtit_data_sub_nb_multisumm <- gtit_data_sub_nb %>%
+  group_by(., Mother) %>%
+  summarise(., nest_boxes = length(unique(nest.box)),
+            breed_attempts = length(nest.box))
+gtit_data_sub_nb_multisumm
+hist(gtit_data_sub_nb_multisumm$nest_boxes)
+hist(gtit_data_sub_nb_multisumm$breed_attempts)
+
+nrow(subset(gtit_data_sub_nb_multisumm, nest_boxes > 1)) #2110
+
+mothers_five_nests <- gtit_data_sub_nb_multisumm$Mother[gtit_data_sub_nb_multisumm$nest_boxes == 5]
+mothers_multi_nests <- gtit_data_sub_nb_multisumm$Mother[gtit_data_sub_nb_multisumm$nest_boxes > 1]
+
+
+#plot these just out of interest to see how far boxes are away from eachother?
+#for mothers that nest in multiple boxes
+ggplot(gtit_data_sub_nb, aes(x = x, y = y)) + 
+  geom_point(colour = 'light grey') +
+  geom_point(data = subset(gtit_data_sub_nb, Mother %in% mothers_five_nests), aes(colour = Mother)) + 
+  theme_bw()
+
+
+#MEAN COORDINATES OF NEST BOX FOR MULTI NESTERS
+#first make line for each breeding attempt
+#then after individual will have same coords for all rows/breeding attempts
+#so can then jsut keep one row per individual 
+gtit_data_sub_nb$x_matrix <- numeric(nrow(gtit_data_sub_nb))
+gtit_data_sub_nb$y_matrix <- numeric(nrow(gtit_data_sub_nb))
+
+#first do x coord
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$x_matrix[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$x[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$x_matrix[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$x[gtit_data_sub_nb$Mother == i]))
+}
+
+#then do y coord
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$y_matrix[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$y[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$y_matrix[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$y[gtit_data_sub_nb$Mother == i]))
+}
+
+
+#should be same coords 
+subset(gtit_data_sub_nb, Mother == '603740')
+subset(gtit_data_sub_nb, Mother == '603704')
+
+
+
+
+#Then also get mean of other environmental variables
+
+#altitude - MEAN ALTITUDE FOR MULTI NESTERS
+#first make line for each breeding attempt
+#then after individual will have same coords for all rows/breeding attempts
+#so can then jsut keep one row per individual 
+gtit_data_sub_nb$alt_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$alt_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$altitude.m.[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$alt_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$altitude.m.[gtit_data_sub_nb$Mother == i]))
+}
+
+
+#northness MEAN
+gtit_data_sub_nb$northness_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$northness_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$northness[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$northness_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$northness[gtit_data_sub_nb$Mother == i]))
+}
+
+
+#edgeness MEAN
+gtit_data_sub_nb$edge_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$edge_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$edge.EDI.[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$edge_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$edge.EDI.[gtit_data_sub_nb$Mother == i]))
+}
+
+
+head(gtit_data_sub_nb)
+
+#oak number and quality
+# MEAN no trees 20m
+gtit_data_sub_nb$No_trees_20m_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$No_trees_20m_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$No_trees_20m[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$No_trees_20m_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$No_trees_20m[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+# MEAN no trees 75m
+gtit_data_sub_nb$No_trees_75m_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$No_trees_75m_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$No_trees_75m[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$No_trees_75m_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$No_trees_75m[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+
+# MEAN quality of oaks 20m
+gtit_data_sub_nb$Oak_health_20m_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$Oak_health_20m_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$Oak_health_20m[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$Oak_health_20m_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$Oak_health_20m[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+# MEAN quality of oaks 75m
+gtit_data_sub_nb$Oak_health_20m_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$Oak_health_75m_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$Oak_health_75m[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$Oak_health_75m_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$Oak_health_75m[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+
+
+#occupancy 
+# MEAN nest box occupancy!
+gtit_data_sub_nb$occupancy_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$occupancy_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$num_occup[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$occupancy_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$num_occup[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+
+
+#population density w/ and w/out blue tits
+# MEAN territ size just great tits
+gtit_data_sub_nb$area_polygon.Gmean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.Gmean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.G[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.Gmean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.G[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+
+
+
+#cropped pop density @ 3 hectares
+gtit_data_sub_nb$area_polygon.G_crop3 <- gtit_data_sub_nb$area_polygon.G
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.G > 30000,]) #1019 individuals
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.G > 30000,]) / nrow(gtit_data_sub_nb) #8.8%
+
+gtit_data_sub_nb$area_polygon.G_crop3[gtit_data_sub_nb$area_polygon.G > 30000] <- 30000
+summary(gtit_data_sub_nb$area_polygon.G_crop3)
+#then get mean for individuals more than once
+gtit_data_sub_nb$area_polygon.G_crop3_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.G_crop3_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.G_crop3[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.G_crop3_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.G_crop3[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+summary(gtit_data_sub_nb$area_polygon.G_crop3)
+summary(gtit_data_sub_nb$area_polygon.G_crop3_mean)
+
+
+
+
+#cropped pop density @ 2 hectares
+gtit_data_sub_nb$area_polygon.G_crop2 <- gtit_data_sub_nb$area_polygon.G
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.G > 20000,]) #2462 individuals
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.G > 20000,]) / nrow(gtit_data_sub_nb) #21.4%
+
+gtit_data_sub_nb$area_polygon.G_crop2[gtit_data_sub_nb$area_polygon.G > 20000] <- 20000
+summary(gtit_data_sub_nb$area_polygon.G_crop2)
+#then get mean for individuals more than once
+gtit_data_sub_nb$area_polygon.G_crop2_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.G_crop2_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.G_crop2[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.G_crop2_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.G_crop2[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+summary(gtit_data_sub_nb$area_polygon.G_crop2)
+summary(gtit_data_sub_nb$area_polygon.G_crop2_mean)
+
+
+
+
+
+
+# MEAN territ size  great tits WITH blue tits
+gtit_data_sub_nb$area_polygon.GBmean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.GBmean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.GB[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.GBmean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.GB[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+
+#cropped pop density @ 3 hectares
+gtit_data_sub_nb$area_polygon.GB_crop3 <- gtit_data_sub_nb$area_polygon.GB
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.GB > 30000,]) #127 individuals
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.GB > 30000,]) / nrow(gtit_data_sub_nb) #1.1%
+
+gtit_data_sub_nb$area_polygon.GB_crop3[gtit_data_sub_nb$area_polygon.GB > 30000] <- 30000
+summary(gtit_data_sub_nb$area_polygon.GB_crop3)
+#then get mean for individuals more than once
+gtit_data_sub_nb$area_polygon.GB_crop3_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.GB_crop3_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.GB_crop3[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.GB_crop3_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.GB_crop3[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+summary(gtit_data_sub_nb$area_polygon.GB_crop3)
+summary(gtit_data_sub_nb$area_polygon.GB_crop3_mean)
+
+
+#cropped pop density @ 2 hectares
+gtit_data_sub_nb$area_polygon.GB_crop2 <- gtit_data_sub_nb$area_polygon.GB
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.GB > 20000,]) #550 individuals
+nrow(gtit_data_sub_nb[gtit_data_sub_nb$area_polygon.GB > 20000,]) / nrow(gtit_data_sub_nb) #4.8%
+gtit_data_sub_nb$area_polygon.GB_crop2[gtit_data_sub_nb$area_polygon.GB > 20000] <- 20000
+summary(gtit_data_sub_nb$area_polygon.GB_crop2)
+#then get mean for individuals more than once
+gtit_data_sub_nb$area_polygon.GB_crop2_mean <- numeric(nrow(gtit_data_sub_nb))
+
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$area_polygon.GB_crop2_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$area_polygon.GB_crop2[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$area_polygon.GB_crop2_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$area_polygon.GB_crop2[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+summary(gtit_data_sub_nb$area_polygon.GB_crop2)
+summary(gtit_data_sub_nb$area_polygon.GB_crop2_mean)
+
+
+
+
+
+###add occupancy controlled for box spacing
+
+#get this first for boxes alone then merge back with breeding data
+#get area when all boxes are used.... input this
+area_all <- read.csv('./output/territory_estimates_all_boxes.csv')
+occupancy <- read.csv('./output/GTIT_occupancy_of_boxes.csv')
+nrow(area_all) #1019
+nrow(occupancy) #1102
+head(area_all)
+head(occupancy)
+
+#merge
+area_occup <- merge(area_all, occupancy, by.x = 'nestbox', by.y = 'nest.box')
+nrow(area_occup) #1019
+head(area_occup)
+
+summary(area_occup$area_polygon)
+summary(area_occup$num_occup)
+
+#keep all sizes - because interested in spacing here not realistic territory size...
+#get residuals of regression of occupancy vs area
+summary(lm(num_occup ~ area_polygon, data = area_occup))
+mod_occ <- lm(num_occup ~ area_polygon, data = area_occup)
+area_occup$occ_cont_space <- mod_occ$residuals
+
+head(area_occup)
+#just keep box and occ_controlled
+area_occup_sub <- area_occup[ , c('nestbox', 'occ_cont_space')]
+head(area_occup_sub)
+
+#keep all already in gtit_data_sub_nb
+gtit_data_sub_nb <- merge(gtit_data_sub_nb, area_occup_sub, by.x = 'nest.box', by.y = 'nestbox', all.x = T)
+nrow(gtit_data_sub_nb) #11526
+summary(gtit_data_sub_nb$occ_cont_space) #48 NAs
+
+
+
+#get mean for individuals recorded more than once
+gtit_data_sub_nb$occ_cont_space_mean <- numeric(nrow(gtit_data_sub_nb))
+for (i in unique(gtit_data_sub_nb$Mother)){
+  #first see if appear only once
+  ifelse(!(i %in% gtit_data_sub_nb$Mother[(duplicated(gtit_data_sub_nb$Mother))]),
+         #if it does only appear once - put same x coordinate in new column
+         gtit_data_sub_nb$occ_cont_space_mean[gtit_data_sub_nb$Mother == i] <- 
+           gtit_data_sub_nb$occ_cont_space[gtit_data_sub_nb$Mother == i],
+         #if it appears more than once - put mean of x coord in new column
+         gtit_data_sub_nb$occ_cont_space_mean[gtit_data_sub_nb$Mother == i] <- 
+           mean(gtit_data_sub_nb$occ_cont_space[gtit_data_sub_nb$Mother == i], na.rm = T))
+}
+summary(gtit_data_sub_nb$occ_cont_space)
+summary(gtit_data_sub_nb$occ_cont_space_mean)
+
+
+head(gtit_data_sub_nb)
+summary(gtit_data_sub_nb)
+nrow(gtit_data_sub_nb) #11526
+
+#check
+subset(gtit_data_sub_nb, Mother == '603704')
+
+length(unique(gtit_data_sub_nb$Mother)) #7595
+
+
+#output data
+write.csv(gtit_data_sub_nb, './raw-data/GTIT_data_anim_mod.csv', row.names = F)
+
+
+saveRDS(gtit_data_sub_nb, './raw-data/GTIT_data_anim_mod.rds')
+
+
+head(read.csv('./raw-data/GTIT_data_anim_mod.csv'))
+
+
+
+
+
+
+
+
+
+
+# SORT PEDIGREE -----------------------------------------------------------
+
+#need to do this add to pedigree before make Mother a factor....
+missing <- unique(gtit_data_sub_nb$Mother[which(!gtit_data_sub_nb$Mother%in%ped_gtit_final$id)])
+length(missing) #429
+missing2 <- unique(gtit_data_sub$Father[which(!gtit_data_sub$Father%in%ped_gtit_final$id)])
+length(missing2) #446
+
+nrow(ped_gtit_final) #14506 + 415 + 442 = 15363
+if(length(missing)>0){
+  test <- insertPed(ped_gtit_final, missing)
+}
+#make manual way to add them 
+missing_moth <- data.frame('id' = c(missing), 'dam' = rep('NA', length(missing)),
+                           'sire' = rep('NA', length(missing)))
+
+#same for father - get rid of na
+missing2A <- missing2[!is.na(missing2)]
+missing_fath <- data.frame('id' = c(missing2A), 'dam' = rep('NA', length(missing2A)),
+                           'sire' = rep('NA', length(missing2A)))
+nrow(missing_fath) #442
+ped_gtit_final <- rbind(ped_gtit_final, missing_moth, missing_fath)
+nrow(ped_gtit_final) #15592
+
+
+# if(length(missing2)>0){
+#   test <- insertPed(ped_gtit_final, missing2)
+# }
+nrow(ped_gtit_final) #15365 (right because one was an NA)
+
+# Orders the pedigree so that parents come before their offspring
+ped_gtit_final <- orderPed(ped_gtit_final)
+
+write.csv(ped_gtit_final, file = './raw-data/GTIT-pedigree-for-asreml.csv', row.names = F)
+
+write.csv(ped_gtit_final, file = './raw-data/GTIT-pedigree-for-asremlFULL.csv', row.names = F)
+#this gives exactly the same results as smaller pedigree, so use smaller one!
+
+
+```
