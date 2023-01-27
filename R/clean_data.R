@@ -16,9 +16,6 @@ box::use()
 #' @param data Wytham breeding data.
 #' @return dataset clean and standardised 
 
-
-#function to clean raw breeding data 
-
 clean_breeding_data <- function(data){
   
   #make all ring names upper case
@@ -26,26 +23,21 @@ clean_breeding_data <- function(data){
   data$Father <- toupper(data$Father)
   
   #factorise columns
-  data$Pnum <- as.factor(data$Pnum)
-  data$Section <- as.factor(data$Section)
-  data$Mixed.species <- as.factor(data$Mixed.species)
-  data$Species <- as.factor(data$Species)
-  data$Closed <- as.factor(data$Closed)
-  data$Missing.entire.brood <- as.factor(data$Missing.entire.brood)
-  data$Suspected.predation <- as.factor(data$Suspected.predation)
+  data <- data %>%
+    dplyr::mutate_at(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
+                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor)
+  
   data$Lay.date <- as.Date(data$Lay.date, '%d / %m / %Y')
   data$Hatch.date <- as.Date(data$Hatch.date, '%d / %m / %Y')
-  data$Father <- as.factor(data$Father)
-  data$Mother <- as.factor(data$Mother)
-  data$Experiment.codes <- as.factor(data$Experiment.codes)
+  
+  #data$Experiment.codes <- as.factor(data$Experiment.codes)
   
   #get rid of any mixed species
   data <- droplevels(subset(data, Mixed.species != TRUE))
   
   #take out those that have NA for lay date
-  data <- droplevels(subset(data, !is.na(April.lay.date)))
-  
-  
+  # data <- droplevels(subset(data, !is.na(April.lay.date)))
+
   #make a column with the nest box code in...
   data$nest.box <- substr(data$Pnum, start = 6, 15)
   data$nest.box <- as.factor(data$nest.box)
