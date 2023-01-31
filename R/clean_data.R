@@ -362,8 +362,264 @@ clean_ringing_data_2 <- function(data){
 
 #' Find duplicated laying dates - keeping both
 #' 
-#' @param x Factor
+#' @param x Factor to check for duplication...
 #' @return ....
 
 isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
+
+
+#' Add age to all mothers
+#' 
+#' @param age age dataset.
+#' @param data data to take.
+#' @return dataset with age of individuals best estimated.
+
+get_age <- function(age, data){
+  
+  #merge datasets by mother and ring number
+  merged <- merge(data, age, by.x = 'Mother', by.y = 'Ring', all.x = T)
+  
+  #get age at breeding attempt for those that know DOB
+  merged <- merged %>%
+    dplyr::mutate(Fem_breed_age = year - Est_DOB)
+  
+  #heck and sort for any that are definitely wrong - less than 1 or more than 10
+  false_ageFem <- subset(merged, Fem_breed_age < 1 | 
+                           Fem_breed_age > 10 | 
+                           is.na(Fem_breed_age))$Mother
+  #paste out number that had wrong age 
+  num_false_ageFem <- length(unique(false_ageFem))
+  perc_false_ageFem <- (length(unique(false_ageFem))/length(unique(merged$Mother))) * 100 #7.7%
+  message(paste(num_false_ageFem, 'females with false age =', signif(perc_false_ageFem, digits = 3),'% of total'))
+  
+  #find these ones earliest breeding year and make their guess of DOB be 1 year before that 
+  #assume that when first recorded breeding it is their 1st year actually breeding
+  #because usually don't move far to breed would likely have been recorded if they did nest
+  #in a box before
+  if(length(false_ageFem) > 0){
+    for(i in false_ageFem){
+    sub <- merged[!is.na(merged$Mother) &
+                    merged$Mother == i, ]
+    
+    #find earliest breeding_year recorded
+    merged$Est_DOB[!is.na(merged$Mother) &
+                     merged$Mother == i] <- rep(min(sub$year) - 1, nrow(sub))
+    }
+  }
+  
+  #fix one random bird if it's there
+  if('TP27299' %in% merged$Mother){
+    merged$Est_DOB[merged$Mother == 'TP27299'] <- 2015
+  }
+  
+  #recalc age 
+  merged <- merged %>%
+    dplyr::mutate(Fem_breed_age = year - Est_DOB)
+  
+  # ifelse((max(merged$Fem_breed_age) > 10 | min(merged$Fem_breed_age) < 1), 
+  #        message('Still some birds with false ages'),
+  #                message('Birds ages all corrected to within 1 year and 10 years'))
+  
+  #get rid of DOB.KNown and Max.DOB columns
+  merged <- merged %>%
+    dplyr::select(-c('DOB.Known', 'Max.DOB', 'DOB')) %>%
+    dplyr::rename('Fem_DOB' = 'Est_DOB')
+  
+  #return this dataset
+  return(merged)
+  
+}
+
+
+#' Remove second broods, for mothers, fathers, late broods - choose which to remove
+#' 
+#' @param data data
+#' @param mothers T or F to remove known second mothers.
+#' @param fathers T or F to remove known second fathers.
+#' @param late T or F to remove late broods.
+#' @return dataset with removed breeding attempts
+
+remove_late_broods <- function(data, mothers, fathers, late){
+  
+  if(mothers = T){
+    #how many mothers have >1 in a given year 
+    dupl_M <- data %>%
+      dplyr::group_by(year) %>%
+      dplyr::filter(clean$isdup(Mother))
+    #mothers keep first broods
+    dupl_M_first <- dupl_M %>%
+      dplyr::group_by(., Mother, year) %>%
+      dplyr::slice_min(., order_by = April.lay.date)
+    #remove others
+    dupl_M_toremove <- dupl_M$Pnum[!(dupl_M$Pnum %in% dupl_M_first$Pnum)]
+    
+    message(paste(length(unique(dupl_M_toremove))), ' breeding attempts removed as known female 2nd broods')
+    
+    #remove those Pnums from data
+    data <- data[!(data$Pnum %in% dupl_M_toremove) , ]
+  }
+  
+  if(father = T){
+    #how many mothers have >1 in a given year 
+    dupl_F <- data %>%
+      dplyr::group_by(year) %>%
+      dplyr::filter(clean$isdup(Father))
+    #mothers keep first broods
+    dupl_F_first <- dupl_F %>%
+      dplyr::group_by(., Father, year) %>%
+      dplyr::slice_min(., order_by = April.lay.date)
+    #remove others
+    dupl_F_toremove <- dupl_F$Pnum[!(dupl_F$Pnum %in% dupl_F_first$Pnum)]
+    
+    message(paste(length(unique(dupl_F_toremove))), ' breeding attempts removed as known male 2nd broods')
+    
+    #remove those Pnums from data
+    data <- data[!(data$Pnum %in% dupl_F_toremove) , ]
+    
+  }
+  
+  if(late = T){
+    output <- NULL
+    #Find first 5% in each year then add 30
+    for(i in unique(data$year){
+      data <- subset(data, year == i)
+      #cut off day -
+      cut_off <- sort(data$April.lay.date)[nrow(data)*0.05] + 30
+      #only keep dates on and before this cut off
+      data_sub <- data[data$April.lay.date <= cut_off, ]
+      
+      output <- rbind(output, data_sub)
+    }
+    data <- output
+  }
+  
+  return(data)
+    
+  }
+  
+  return(data)
+  
+}
+
+
+
+# GET RID MOTHER KNOWN 2ND BROODS -----------------------------------------------
+
+#find any mothers recorded twice in any year
+#how many mothers have >1 in a given year 
+
+dupl_M <- breed_gtit_noNA_age %>%
+  dplyr::group_by(year) %>%
+  dplyr::filter(clean$isdup(Mother))
+length(dupl_M$Mother) #512
+length(unique(dupl_M$Mother)) #242 - number of females that repeat nests - can do so in >1 year
+
+#how many double breeding attempts in each year
+dupl_M_summ <- dupl_M %>%
+  dplyr::group_by(., year) %>%
+  dplyr::summarise(., num = length(unique(Mother)),
+                   total_attempts = length(Mother))
+sum(dupl_M_summ$num) #254 - instances of repeated nests over all years
+
+#how many mothers nest >2 times in one year
+dupl_M_more <- dupl_M %>%
+  dplyr::group_by(., year, Mother) %>%
+  dplyr::summarise(., attempts = length(unique(Pnum)))
+head(dupl_M_more)
+dupl_M_more$attempts <- as.factor(dupl_M_more$attempts)
+summary(dupl_M_more$attempts)
+#   2   3   4 
+# 251   2   1
+
+
+#mothers keep first broods
+dupl_M_first <- dupl_M %>%
+  dplyr::group_by(., Mother, year) %>%
+  dplyr::slice_min(., order_by = April.lay.date)
+length(unique(dupl_M_first$Mother)) #242 
+length(dupl_M_first$Mother) #254
+length(unique(dupl_M_first$Pnum)) #254 
+
+
+#then from data set of all dupl find Pnum of all others apart from these 1st broods
+#then will be all 2nd 3rd and 4th broods in one group 
+dupl_M_toremove <- dupl_M$Pnum[!(dupl_M$Pnum %in% dupl_M_first$Pnum)]
+length(unique(dupl_M_toremove)) #258
+
+#remove those Pnums from data
+breed_gtit_noNA_age_no2M <- breed_gtit_noNA_age[!(breed_gtit_noNA_age$Pnum %in% dupl_M_toremove) , ]
+nrow(breed_gtit_noNA_age_no2M) #11708
+
+
+
+# GET RID FATHER KNOWN 2ND BROODS -----------------------------------------
+#should I remove these? cause are known second broods?
+dupl_F <- subset(breed_gtit_noNA_age_no2M, !is.na(Father)) %>%
+  group_by(., year) %>%
+  filter(., isdup(Father))
+length(dupl_F$Father) #42
+length(unique(dupl_F$Father)) #21 - number of females that repeat nests - can do so in >1 year
+
+#how many double breeding attempts in each year
+dupl_F_summ <- dupl_F %>%
+  group_by(., year) %>%
+  summarise(., num = length(unique(Father)),
+            total_attempts = length(Father))
+sum(dupl_F_summ$num) #21 - instances of repeated nests over all years
+
+#how many mothers nest >2 times in one year
+dupl_F_more <- dupl_F %>%
+  group_by(., year, Father) %>%
+  summarise(., attempts = length(unique(Pnum)))
+head(dupl_F_more)
+dupl_F_more$attempts <- as.factor(dupl_F_more$attempts)
+summary(dupl_F_more$attempts)
+#   2  
+# 21
+
+#mothers keep first broods
+dupl_F_first <- dupl_F %>%
+  group_by(., Father, year) %>%
+  slice_min(., order_by = April.lay.date)
+length(unique(dupl_F_first$Father)) #21 
+length(dupl_F_first$Father) #23
+length(unique(dupl_F_first$Pnum)) #23 
+
+
+#then from data set of all dupl find Pnum of all others apart from these 1st broods
+#then will be all 2nd 3rd and 4th broods in one group 
+dupl_F_toremove <- dupl_F$Pnum[!(dupl_F$Pnum %in% dupl_F_first$Pnum)]
+length(unique(dupl_F_toremove)) #19 
+
+#remove those Pnums from data
+breed_gtit_noNA_age_no2Mno2F <- breed_gtit_noNA_age_no2M[
+  !(breed_gtit_noNA_age_no2M$Pnum %in% dupl_F_toremove) , ]
+nrow(breed_gtit_noNA_age_no2Mno2F) #11689
+
+
+
+# GET RID LATE 2ND BROODs -------------------------------------------------
+
+#in original dataset, when get rid of all known 2nd lay dates
+#use left over dataset to work out first 5% of lay dates,
+#and get rid of any more than 30 days after them
+nrow(breed_gtit_noNA_age_no2Mno2F) #11689
+
+output <- NULL
+#Find first 5% in each year then add 30
+for(i in 1960:2021){
+  data <- subset(breed_gtit_noNA_age_no2Mno2F, year == i)
+  #cut off day -
+  cut_off <- sort(data$April.lay.date)[nrow(data)*0.05] + 30
+  #only keep dates on and before this cut off
+  data_sub <- data[data$April.lay.date <= cut_off, ]
+  
+  output <- rbind(output, data_sub)
+}
+
+nrow(output) #11560
+
+breed_gtit_noNA_age_no2M_no2F_noLate <- output
+
+
 
