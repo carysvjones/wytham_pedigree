@@ -8,6 +8,8 @@
 
 box::use(magrittr[`%>%`])
 box::use(dplyr)
+box::use(clean = ../ R / clean_data)
+
 
 
 # FUNCTIONS ────────────────────────────────────────────────────────────────── #
