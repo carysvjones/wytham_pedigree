@@ -1,0 +1,176 @@
+---
+title: "prep matrices and compare"
+author: "Carys Jones"
+date: '2023-01-31'
+output: html_document
+---
+
+when run models make sure make things factors beforehand
+
+# Dependencies
+```{r}
+box::use(.. / R / dirs[dirs])
+box::use(clean = ../ R / clean_data)
+box::use(mod = ../ R / for_models)
+
+box::use(readr[read_csv])
+box::use(ggplot2[...])
+box::use(dplyr)
+box::use(moments)
+box::use(kinship2)
+box::use(sf)
+box::use(tidyr)
+box::use(pedantics)
+box::use(magrittr[`%>%`])
+
+
+# install.packages('./pedantics_1.7.tar.gz', repos = NULL, type = 'source')
+```
+
+
+
+```{r}
+
+gtit_data_sub_nb <- read.csv(file.path(dirs$data, 'GTIT_data_anim_mod.csv'), na.strings=c("", "NA"))
+nrow(gtit_data_sub_nb) #11526
+
+gtit_data_sub_nb <- gtit_data_sub_nb %>%
+   dplyr::mutate_at(c('breeding_year', 'Mother', 'Fbreeding_age_group', 'nest.box'), as.factor) %>%
+
+#to run with a subset 
+
+data <- gtit_data_sub_nb
+data <- droplevels(subset(gtit_data_sub_nb, breeding_year == 2011:2013))
+
+#put dates as range e.g. 2011:2021, or 'ALL' to get all years of data 
+test <- mod$choose_data(gtit_data_sub_nb, years = 2008:2013)
+
+unique(test$breeding_year)
+    
+         
+
+
+
+
+nrow(data) #11526
+
+#pedigree data input 
+# ped_gtit_final <- read.csv('./raw-data/GTIT-pedigree-FULL.csv')
+ped_gtit_final <- read.csv('./raw-data/GTIT-pedigree-for-asreml.csv')
+nrow(ped_gtit_final) #15592
+#get inverse of matrix
+ped_gtit_inv <- ainverse(ped_gtit_final)
+
+
+#run with ASReml (then also with brms?)
+
+
+#distance matrix vs enm matrix and then including both 
+
+#get distinct line for each mother with whole dataset
+unique_mother <- data %>%
+  distinct(., Mother, .keep_all = TRUE)
+nrow(unique_mother) #7595
+length(unique(unique_mother$Mother)) #7595
+
+
+
+# ENVIRONMENT SIM MATRIX  -------------------------------------------------
+
+head(data)
+head(data[,c("Mother", "alt_mean", "northness_mean", "edge_mean", "No_trees_75m_mean",
+             "occupancy_mean", "area_polygon.GB_crop3_mean")])
+# As environmental measures may occur on different scales, we first scale and center the environmental data.
+# This is done by taking away the mean (so the mean becomes 0) and dividing by the standard deviation for
+# each environmental measure (so the variance becomes 1).
+# First gets the relevant columns from the data
+
+#need to make single line for each Mother
+#keep just 1 line per id 
+nrow(unique_mother) #774
+enm <- unique_mother[,c("alt_mean", "northness_mean", "edge_mean", "No_trees_75m_mean",
+                        "area_polygon.GB_crop3_mean")]
+languageR::pairscor.fnc(enm, hist = T, smooth = T)
+
+
+# Centers the data, and scales by standard deviation
+enm<-scale(enm, center=TRUE, scale=TRUE)
+rownames(enm)<-unique_mother$Mother
+
+# similarity matrix between individuals
+# calculates the euclidean distance between each individual's environment parameters
+env_euc <- as.matrix(dist(enm, method="euclidean", diag=TRUE,upper=TRUE))
+# saveRDS(env_euc, file = './output/environ_sim_matrix_noocc_all_beforescale.rds')
+
+# then scales so that the values are between 0 and 1
+env_euc_scal <- 1 - env_euc / max (env_euc, na.rm = TRUE)
+colnames(env_euc_scal) <- rownames(env_euc_scal) <- unique_mother$Mother 
+# saveRDS(env_euc_scal, file = './output/environ_sim_matrix_noocc_all_beforePD.rds')
+
+round(env_euc_scal[1:10,1:10], digits=3) #diagonal is 1
+
+#test if between 0-1
+env_test <- t(combn(colnames(env_euc_scal), 2))
+env_test_tab <- data.frame(env_test, envir=env_euc_scal[env_test])
+summary(env_test_tab$envir)
+
+#make positive definite so can run in animal model 
+env_euc_scal_PD <- nearPD(env_euc_scal)
+env_euc_scal_PD <- env_euc_scal_PD$mat
+round(env_euc_scal_PD[1:10,1:10], digits=3)
+
+#test if between 0-1
+env_test_PD <- t(combn(colnames(env_euc_scal_PD), 2))
+env_test_PD_tab <- data.frame(env_test_PD, envir=env_euc_scal_PD[env_test_PD])
+summary(env_test_PD_tab$envir)
+#after it's scaled to be positive values are no longer all between 0 and 1
+#goes up to 1.297.. is that ok?
+
+# saveRDS(env_euc_scal_PD, file = './output/environ_sim_matrix_noocc_all.rds')
+
+env_euc_scal_PD <- readRDS('./output/environ_sim_matrix_noocc_all.rds')
+
+
+
+# DISTANCE MATRIX ---------------------------------------------------------
+
+
+#make distance matrix
+#make coordinates into geometries 
+spatial_geom <- st_as_sf(unique_mother, coords = c("x_matrix", "y_matrix"), crs = 27700) 
+#keep just geometry
+geom <- spatial_geom[,c('geometry')]
+rownames(geom) <- spatial_geom$Mother
+#make distance matrix 
+dist_mat <- as.matrix(st_distance(geom, geom))
+#doesn't keep row names - so name column and rows here 
+colnames(dist_mat) <- rownames(dist_mat) <- spatial_geom$Mother
+
+#can make it to a matrix and array by doing this 
+x <- as.numeric(dist_mat)
+dim(x) <- c(nrow(spatial_geom), nrow(spatial_geom)) #give it dimensions?
+colnames(x) <- rownames(x) <- spatial_geom$Mother
+
+#scale the matrix - so diagonal is 1
+x_scaled <- 1- x/max(x, na.rm=TRUE)
+x_scaled_pos <- nearPD(x_scaled)
+x_scaled_pos_mat <- x_scaled_pos$mat
+
+# saveRDS(x_scaled_pos_mat, file = './output/spatial_prox_matrix_all.rds')
+# saveRDS(x_scaled, file = './output/spatial_prox_matrix_all_scaled.rds')
+# saveRDS(x, file = './output/spatial_prox_matrix_all_raw.rds')
+
+x_scaled_pos_mat <- readRDS('./output/spatial_prox_matrix_all.rds')
+
+
+
+```
+
+
+```{r}
+
+
+
+
+
+```
