@@ -20,10 +20,6 @@ box::use(tidyr)
 box::use(pedantics)
 box::use(magrittr[`%>%`])
 
-
-
-
-# install.packages('./pedantics_1.7.tar.gz', repos = NULL, type = 'source')
 ```
 
 
@@ -295,14 +291,14 @@ ages <- read.csv(file.path(dirs$data, 'age_data.csv'), na.strings = "NA")
 summary(as.factor(ages$Est_DOB))
 
 #use function to get age 
-breed_gtit_noNA_age <- get_age(ages, breed_gtit_noNA)
+breed_gtit_noNA_age <- clean$get_age(ages, breed_gtit_noNA)
 
 
 # GET RID MOTHER & FATHER KNOWN 2ND BROODS & LATE BROODS ------------------
 
 #use function - decide which ones to use 
 #should say how many breeding attempts it gets rid of each time
-breed_gtit_noNA_age_sub <- remove_late_broods(breed_gtit_noNA_age, mothers = T, fathers = T, late = T)
+breed_gtit_noNA_age_sub <- clean$remove_late_broods(breed_gtit_noNA_age, mothers = T, fathers = T, late = T)
 nrow(breed_gtit_noNA_age_sub) #11560
 
 
@@ -428,7 +424,7 @@ gtit_data_sub_nb <- gtit_data_sub_nb %>%
                 northness_mean = mean(northness),
                 edge_mean = mean(edge.EDI.),
                 No_trees_75m_mean = mean(No_trees_75m),
-                area_polygon_crop3 = mean(area_polygon.G_crop3)) %>%
+                area_polygon_crop3_mean = mean(area_polygon.G_crop3)) %>%
   dplyr::ungroup()
 
 #output data
