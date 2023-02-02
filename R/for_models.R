@@ -20,6 +20,9 @@ choose_data <- function(data, years){
   ifelse(years == 'ALL', 
          data <- data, 
          data <- data %>%
-           dplyr::select(., breeding_year == years))
+           dplyr::filter(., breeding_year == years) %>%
+           droplevels())
   return(data)
 }
+
+
