@@ -6,6 +6,8 @@
 
 box::use(magrittr[`%>%`])
 box::use(dplyr)
+box::use(rptR)
+
 
 
 # FUNCTIONS ────────────────────────────────────────────────────────────────── #
@@ -61,6 +63,32 @@ get_var_comps <- function(model){
   return(data)
   
 }
+
+
+
+#' get repeatability value for environmental variables of Mothers
+#' 
+#' @param data dataset to use.
+#' @param response response factor.
+#' @param nboot number of bootstraps, automatic = 1000.
+#' @param npermut numebr permutations, automatic = 0.
+#' @return model output from rpt function.
+
+rep_val <- function(response, data, nboot = 1000, npermut = 0){
+  
+  # mod_output <- lm(data = dat, as.formula(paste(response, '~ breeding_year')))
+  mod_output <- rptR::rpt(stats::as.formula(paste(response, '~ (1 | Mother)')), 
+                          grname = "Mother", 
+                          data = data, 
+                          datatype = "Gaussian", 
+                          nboot = nboot, 
+                          npermut = npermut)
+  
+  return(mod_output) 
+}
+
+
+
 
 
 #' Get heritabiltiy output from models - and Vp 
