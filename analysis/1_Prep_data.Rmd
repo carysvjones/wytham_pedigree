@@ -65,10 +65,6 @@ breed_gtit <- breed %>%
   dplyr::filter(Species == 'g')
 nrow(breed_gtit) #17727
 
-# #for now remove those 2014-2021, because ringing data in this data set only till 2013
-# breed_gtit_early <- breed_gtit %>% 
-#   dplyr::filter(year < 2014)
-
 #quick summaries
 nrow(breed_gtit_early) #15307
 length(unique(breed_gtit_early$Pnum)) #15307
@@ -132,7 +128,7 @@ ring_all <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_G
                   na.strings=c("", "NA"))
 
 
-# GTIT - Ringing data up to 2013 -----------------------------------------------
+# GTIT - Ringing data  -----------------------------------------------
 
 #just keep great tits 
 ring_gtit <- ring_all %>% dplyr::filter(bto_species_code == 'GRETI')
@@ -144,7 +140,7 @@ length(unique(ring_gtit$nb)) #1121
 length(unique(ring_gtit$bto_ring)) #89967
 
 
-# GTIT MERGE - ring and breed up to 2013 ---------------------------------------
+# GTIT MERGE - ring and breed u ---------------------------------------
 
 #merge both datasets by Pnum
 breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = 'Pnum', all = T) %>%
@@ -157,21 +153,15 @@ breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = 'Pnum', all = T) %>%
                 fledglings_born_with = Num.fledglings,
                 clutch_size_born_with = Clutch.size,
                 nest_box_born_in = nest.box,
-                year_born = yr)
+                year_born = yr) %>%
+  #some have no nest box born in but have Pnum -  take nest box from Pnum 
+  dplyr::mutate(nest_box_born_in = substr(Pnum, 6, 15))
 
 nrow(breed_ring_gtit) #95318
 length(unique(breed_ring_gtit$Pnum)) #17853
 length(unique(breed_ring_gtit$bto_ring)) #89968 
 length(unique(breed_ring_gtit$Mother)) #8427 
 length(unique(breed_ring_gtit$Father)) #7115 
-
-#rename some 
-breed_ring_gtit <- breed_ring_gtit %>%
-  dplyr::rename(birth_lay_date = April.lay.date,
-                fledglings_born_with = Num.fledglings,
-                clutch_size_born_with = Clutch.size,
-                nest_box_born_in = nest.box,
-                year_born = year)
 
 
 #don't really need this??
@@ -180,19 +170,16 @@ levels(breed_ring_gtit$sex) <- c(levels(breed_ring_gtit$sex), 'male', 'female')
 breed_ring_gtit$sex[breed_ring_gtit$sex == "M"] <- "male"
 breed_ring_gtit$sex[breed_ring_gtit$sex == "F"] <- "female"
 length(breed_ring_gtit$bto_ring) #95318
-
-
 # ADD MISSING SEX TO PEDIGREE GTIT
-
 #how many have their ring number in pedigree, and are also mothers
 breed_ring_gtit$sex[breed_ring_gtit$bto_ring %in% breed_gtit$Mother] <- 'female'
 breed_ring_gtit$sex[breed_ring_gtit$bto_ring %in% breed_gtit$Father] <- 'male'
 summary(as.factor(breed_ring_gtit$sex)) #79736 NAs
 
-
 #some have no nest box born in but have Pnum -  take nest box from Pnum 
 breed_ring_gtit <- breed_ring_gtit %>%
   dplyr::mutate(nest_box_born_in = substr(Pnum, 6, 15))
+
 
 write.csv(breed_ring_gtit, file = file.path(dirs$data,'GTIT-pedigree_merged_data_all_years.csv'), row.names = F)
 
@@ -253,21 +240,49 @@ PREPARE DATA
 # READ IN BREEDING DATA ---------------------------------------------------
 #breeding data - is all Pnums and lay dates fledglings etc 
 breed <- read.csv(file.path(dirs$data,'LT_breeding_data_greti_bluti_1960_2021-CLEAN.csv'))
- breed_gtit <- breed %>%
+ 
+breed_gtit <- breed %>%
    dplyr::filter(Species == 'g')
 nrow(breed_gtit) #17727
 
+unique(subset(breed_gtit, !is.na(Experiment.codes))$year)
+
 #get rid of those with experiment codes, no LD and no Mother
 breed_gtit_noNA <- breed_gtit %>%
-  dplyr::filter(is.na(breed_gtit$Experiment.codes) &
-                  !is.na(breed_gtit$April.lay.date) &
-                  !is.na(Mother)) %>%
+  dplyr::filter(#is.na(breed_gtit$Experiment.codes) &
+                  !is.na(breed_gtit$April.lay.date))
+
+
+#why choose to just keep mothers?
+
+#how many have no mother
+nrow(subset(breed_gtit_noNA, is.na(Mother))) #3226
+
+nrow(subset(breed_gtit_noNA, is.na(Father))) #5704
+
+#have both parents
+nrow(subset(breed_gtit_noNA, !is.na(Mother) & !is.na(Father))) #9117
+#have just mother
+nrow(subset(breed_gtit_noNA, !is.na(Mother))) #11966
+nrow(subset(breed_gtit_noNA, !is.na(Mother) & is.na(Father))) #2849 have no mother but have father
+
+#have jsut father
+nrow(subset(breed_gtit_noNA, !is.na(Father))) #9488
+nrow(subset(breed_gtit_noNA, !is.na(Father) & is.na(Mother))) #371 have no father but have mother
+
+
+breed_gtit_noNA <- breed_gtit_noNA %>%
+  dplyr::filter(!is.na(Mother)) %>%
   dplyr::select('year', 'Pnum', 'Section', 'April.lay.date', 'April.hatch.date',
                                         'Clutch.size', 'Num.fledglings', 'Father', 'Mother', 'nest.box')
 length(unique(breed_gtit_noNA$Mother)) #7687
 length(unique(breed_gtit_noNA$Father)) #6251
 length(unique(breed_gtit_noNA$Pnum)) #11966
 summary(breed_gtit_noNA$April.lay.date) #-5 to 83
+
+
+nrow(breed_gtit_noNA) #15192
+
 
 
 # ADD AGE  ----------------------------------------------------------------
@@ -366,7 +381,7 @@ summary(gtit_data_sub_nb$area_polygon.G_crop3)
 nrow(gtit_data_sub_nb) #11526
 length(unique(gtit_data_sub_nb$Mother)) #7595
 
-summary(gtit_data_sub_nb$April.lay.date) #-5 to 59
+summary(gtit_data_sub_nb$April.lay.date) #-5 to 59, median = 25
 summary(gtit_data_sub_nb$April.hatch.date)#780 NAs
 summary(gtit_data_sub_nb$Clutch.size) #43 NAs
 
