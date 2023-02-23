@@ -33,23 +33,8 @@ PREPARE PEDIGREE
 ```{r}
 
 # MERGE BREEDING AND RINGING DATA -----------------------------------------
-# READ IN - Breeding Data -------------------------------------------------
 
-# #read in data 1960-2020
-# breed <- read.csv(file.path(dirs$data, 'LT_breeding_data_greti_bluti_1960_2020.csv'), na.strings=c("", "NA"))
-# nrow(breed) #39530
-# 
-# #read in 2021 data 
-# breed2021 <- read.csv(file.path(dirs$data, 'ebmp_broods_2021.csv'), na.strings=c("", "NA")) %>%
-#   #add column with year
-#   dplyr::mutate(year = as.integer(2021))
-# nrow(breed2021) #1209
-# 
-# #bind 2
-# breed <- rbind(breed, breed2021)
-# write.csv(breed, file = file.path(dirs$data,'LT_breeding_data_greti_bluti_1960_2021.csv'), row.names = F)
-
-#just have input data 1960-2020
+#just have input data 1960-2021
 breed <- read.csv(file.path(dirs$data, 'LT_breeding_data_greti_bluti_1960_2021.csv'), na.strings=c("", "NA"))
 nrow(breed) #40739
 
@@ -57,6 +42,20 @@ nrow(breed) #40739
 breed <- clean$clean_breeding_data(breed)
 nrow(breed) #38963
 
+#add dummy names to mothers we don't know
+breed <- breed %>%
+    dplyr::mutate(Mother = dplyr::if_else(is.na(Mother),
+                                          paste(Pnum,'_moth', sep = ''),
+                                          paste(Mother)),
+                  Father = dplyr::if_else(is.na(Father),
+                                          paste(Pnum,'_fath', sep = ''),
+                                          paste(Father)))
+
+head(breed$Mother)
+head(test$Mother)
+
+head(breed$Father)
+head(test$Father)
 
 # GTIT Breeding Data ------------------------------------------------------
 
@@ -66,12 +65,12 @@ breed_gtit <- breed %>%
 nrow(breed_gtit) #17727
 
 #quick summaries
-nrow(breed_gtit_early) #15307
-length(unique(breed_gtit_early$Pnum)) #15307
-length(unique(breed_gtit_early$Mother)) #7345
-summary(breed_gtit_early$Mother) #2853 mothers unknown  
-length(unique(breed_gtit_early$Father)) #6039
-summary(breed_gtit_early$Father) #5442
+nrow(breed_gtit) #15307
+length(unique(breed_gtit$Pnum)) #15307
+length(unique(breed_gtit$Mother)) #7345
+summary(breed_gtit$Mother) #2853 mothers unknown  
+length(unique(breed_gtit$Father)) #6039
+summary(breed_gtit$Father) #5442
 
 
 # READ IN - Ringing Data up to 2013 --------------------------------------------------
@@ -84,23 +83,7 @@ nrow(ring) #151785
 
 # READ IN - Ringing data 2013 onwards -------------------------------------
 
-# ring2 <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_2013-20.csv'),
-#                   na.strings=c("", "NA"))
-#    
-# ring2021 <- read.csv(file.path(dirs$data, 'ebmp_ringing_data_2021.csv'),
-#                   na.strings=c("", "NA")) 
-# 
-# nrow(ring2) #51566
-# nrow(ring2021) #8197
-# 
-# #bind
-# ring2 <- rbind(ring2, ring2021)
-# nrow(ring2) #59763
-# 
-# #just input 2013-2021 data
-# write.csv(ring2, file = file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_2013-21.csv'), row.names = F)
-
-#just have input data 1960-2020
+#just have input data 1960-2021
 ring2 <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_2013-21.csv'),
                   na.strings=c("", "NA")) %>% 
   clean$clean_ringing_data_2(.) %>%
@@ -228,6 +211,10 @@ nrow(ped_gtit_final) #15539
 write.csv(ped_gtit_final, file = file.path(dirs$data,'GTIT-pedigree-for-asreml.csv'), row.names = F)
 
 
+###test with dummy names *****
+
+
+
 ```
 
 
@@ -239,10 +226,10 @@ PREPARE DATA
 
 # READ IN BREEDING DATA ---------------------------------------------------
 #breeding data - is all Pnums and lay dates fledglings etc 
-breed <- read.csv(file.path(dirs$data,'LT_breeding_data_greti_bluti_1960_2021-CLEAN.csv'))
- 
-breed_gtit <- breed %>%
-   dplyr::filter(Species == 'g')
+# breed <- read.csv(file.path(dirs$data,'LT_breeding_data_greti_bluti_1960_2021-CLEAN.csv'))
+#  
+# breed_gtit <- breed %>%
+#    dplyr::filter(Species == 'g')
 nrow(breed_gtit) #17727
 
 unique(subset(breed_gtit, !is.na(Experiment.codes))$year)
@@ -326,37 +313,6 @@ ADD SPATIAL DATA
 
 ```{r}
 
-# ADD SPATIAL DATA ----------------------------------------------
-
-
-#TO CUT!!!!
-
-# #read in nest box data and use some classifcations of habitat 
-# nestbox <- read.csv(file.path(dirs$data, 'Nest box habitat data.csv'), na.strings=c("", "NA"))
-# nrow(nestbox) #1019
-# nestbox <- nestbox %>%
-#   dplyr::select('Box', 'Section', 'x', 'y', 'edge.EDI.', 'altitude.m.', 'northness')
-# 
-# #oak data - not for all boxes.... leave some with NA
-# oak <- read.csv(file.path(dirs$data, 'Tit_data.csv'), na.strings=c("", "NA"))
-# nrow(oak) #987
-# oak <- oak %>%
-#   dplyr::select('Box', 'No_trees_75m')
-# 
-# box_tree <- merge(nestbox, oak, by = 'Box', all.x = T)
-# head(box_tree)
-# nrow(box_tree) #1019
-# 
-# #territory needs to be different over years
-# territory <- read.csv(file.path(dirs$data, 'all_territory_estimates.csv'), na.strings=c("", "NA"))
-# head(territory)
-# nrow(territory) #16872
-# territory <- territory[ , c(1,2,14)]
-# #when merge keep all territory
-# box_tree_terr <- merge(box_tree, territory, by.x = 'Box', by.y = 'nestbox', all.y = T)
-# head(box_tree_terr) #16872
-
-# write.csv(box_tree_terr, file = file.path(dirs$data,'Habitat_data_nestboxes.csv'), row.names = F)
 
 
 #Just open habitat data straight away 
