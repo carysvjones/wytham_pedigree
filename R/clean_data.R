@@ -216,6 +216,22 @@ clean_breeding_data <- function(data){
   # dupl_F_gtit <- droplevels(subset(dupl_F_gtit, Pnum != '19881B222' & Pnum != '19881B36' &
   #                                    Pnum != '20101P7' & Pnum != '20101P8'))
   # 
+  
+  
+  # #if dummy_names true then add dummy names to parents not identified
+  # if(dummy_names == T){
+  #   #add dummy names to mothers we don't know
+  #   data <- data %>%
+  #     dplyr::mutate(Mother = dplyr::if_else(is.na(Mother),
+  #                                           paste(Pnum,'_moth', sep = ''),
+  #                                           paste(Mother)),
+  #                   Father = dplyr::if_else(is.na(Father),
+  #                                           paste(Pnum,'_fath', sep = ''),
+  #                                           paste(Father)))
+  # }
+  # 
+  
+  
   return(data)
 }
 
@@ -253,8 +269,11 @@ clean_ringing_data <- function(data){
   #remove retraps? - because only need info of chicks in nest and they're always new?
   #just keep N 
   # data <- droplevels(subset(data, retrap == 'N'))
-  #also only keep birds age 1 - because get adults from other dataset??
-  data <- droplevels(subset(data, age == 1))
+  
+  #also only keep birds age 1 - because get adults from other dataset - do this after manually!
+ # data <- droplevels(subset(data, age == 1))
+  
+  
   #just keep years from 1960 - breeding data doesn't go earlier than that 
   data <- droplevels(subset(data, yr > 1959))
   #remove UNRRUNT from bto_ring?
@@ -330,8 +349,10 @@ clean_ringing_data_2 <- function(data){
   
   #just keep N 
   data <- droplevels(subset(data, Rtype == 'N'))
-  #also only keep birds age 1 - because get adults from other dataset??
-  data <- droplevels(subset(data, Age == 1))
+  
+  #also only keep birds age 1 - because get adults from other dataset?? - do this after manually!
+  #data <- droplevels(subset(data, Age == 1))
+  
   #just keep those from WYT
   data <- droplevels(subset(data, Place == 'WYT'))
   
@@ -376,61 +397,73 @@ isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
 #' @param data data to take.
 #' @return dataset with age of individuals best estimated.
 
-get_age <- function(age, data){
+get_age <- function(data){
   
-  #merge datasets by mother and ring number
-  merged <- merge(data, age, by.x = 'Mother', by.y = 'Ring', all.x = T)
+  #Get those we know when born
+  #use ringing data before cleaned - so have to read in 
+  ring_all <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
+                       na.strings=c("", "NA"))
+  #just keep greti
+  ring_all_gtit <- ring_all %>%
+    dplyr::filter(bto_species_code == 'GRETI')
   
+  #just get age for those that we know for sure in ringing dataset
+  #use BTO age codes
+  ages <- ring_all_gtit %>%
+    dplyr::mutate(Fem_DOB = 
+                    dplyr::case_when(
+                      age == '1' ~ yr,
+                      age == '1J' ~ yr,
+                      age == '3' ~ yr,
+                      age == '3J' ~ yr,
+                      age == '5' ~ as.integer((yr-1)))) %>%
+    dplyr::group_by(bto_ring) %>%
+    #get earliest DOB for each if have more than 1 
+    dplyr::slice_min(Fem_DOB) %>%
+    #keep only 1 row per individual 
+    dplyr::slice_head() %>%
+    dplyr::ungroup() %>%
+    dplyr::select(bto_ring, Fem_DOB)
+  
+  #merge with breeding data 
+  merged <- dplyr::left_join(data, ages, by = c('Mother' = 'bto_ring'))
+
   #get age at breeding attempt for those that know DOB
   merged <- merged %>%
-    dplyr::mutate(Fem_breed_age = year - Est_DOB)
-  
-  #heck and sort for any that are definitely wrong - less than 1 or more than 10
+    dplyr::mutate(Fem_breed_age = merged$year - merged$Fem_DOB)
+  #table(merged$Fem_breed_age)
+  #check and sort for any that are definitely wrong - less than 1 or more than 10, or NA
   false_ageFem <- subset(merged, Fem_breed_age < 1 | 
                            Fem_breed_age > 10 | 
                            is.na(Fem_breed_age))$Mother
-  #paste out number that had wrong age 
-  num_false_ageFem <- length(unique(false_ageFem))
-  perc_false_ageFem <- (length(unique(false_ageFem))/length(unique(merged$Mother))) * 100 #7.7%
-  message(paste(num_false_ageFem, 'females with false age =', signif(perc_false_ageFem, digits = 3),'% of total'))
-  
+  # #paste out number that had wrong age 
+  # num_false_ageFem <- length(unique(false_ageFem))
+  # perc_false_ageFem <- (length(unique(false_ageFem))/length(unique(merged$Mother))) * 100 #7.7%
+  # message(paste(num_false_ageFem, 'females with false age =', signif(perc_false_ageFem, digits = 3),'% of total'))
+  # 
   #find these ones earliest breeding year and make their guess of DOB be 1 year before that 
   #assume that when first recorded breeding it is their 1st year actually breeding
   #because usually don't move far to breed would likely have been recorded if they did nest
   #in a box before
-  if(length(false_ageFem) > 0){
-    for(i in false_ageFem){
-    sub <- merged[!is.na(merged$Mother) &
-                    merged$Mother == i, ]
-    
-    #find earliest breeding_year recorded
-    merged$Est_DOB[!is.na(merged$Mother) &
-                     merged$Mother == i] <- rep(min(sub$year) - 1, nrow(sub))
+  if (length(false_ageFem) > 0){
+    for(individual in false_ageFem){
+      sub <- merged[!is.na(merged$Mother) &
+                      merged$Mother == individual, ]
+      
+      #find earliest breeding_year recorded
+      merged$Fem_DOB[!is.na(merged$Mother) &
+                       merged$Mother == individual] <- rep(min(sub$year) - 1, nrow(sub))
     }
   }
-  
-  #fix one random bird if it's there
-  if('TP27299' %in% merged$Mother){
-    merged$Est_DOB[merged$Mother == 'TP27299'] <- 2015
-  }
-  
   #recalc age 
   merged <- merged %>%
-    dplyr::mutate(Fem_breed_age = year - Est_DOB)
-  
-  # ifelse((max(merged$Fem_breed_age) > 10 | min(merged$Fem_breed_age) < 1), 
-  #        message('Still some birds with false ages'),
-  #                message('Birds ages all corrected to within 1 year and 10 years'))
-  
-  #get rid of DOB.KNown and Max.DOB columns
-  merged <- merged %>%
-    dplyr::select(-c('DOB.Known', 'Max.DOB', 'DOB')) %>%
-    dplyr::rename('Fem_DOB' = 'Est_DOB')
+    dplyr::mutate(Fem_breed_age = year - Fem_DOB)
   
   #return this dataset
   return(merged)
-  
+
 }
+      
 
 
 #' Remove second broods, for mothers, fathers, late broods - choose which to remove
