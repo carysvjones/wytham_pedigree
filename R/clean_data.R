@@ -67,8 +67,7 @@ clean_breeding_data <- function(data){
              data$Section[data$Pnum == i] <- 'unknown'))
   }
   
-  
-  #take out those with section unknown and he
+  #take out those with section unknown and he (are located outside of the woods)
   data <- data %>% 
     dplyr::filter(Section != 'unknown' & Section != 'he') %>%
   droplevels()
@@ -102,9 +101,9 @@ clean_breeding_data <- function(data){
       #get rid of Pnum 20081EX27, 20051EX66
       #mother recorded twice in 1 year lay date same day but in different boxes...
       Pnum != '20081EX27' &
-      #same here - am keeping attempts where we know father too...
+      #same here - of the 2 attempts listed I keep attempt where we know father too
       Pnum != '20051EX66' &
-      #remove E985078 - is in there as male and female.... 3 times as male so remove one where it is mother
+      #remove E985078 - is in there as male and female - 3 times as male so remove one where it is mother
       Pnum != '20081CP35' &
       #remove 20181EX20 - has same ID recorded for mother and father
       Pnum != '20181EX20' &
@@ -178,41 +177,31 @@ clean_breeding_data <- function(data){
 clean_ringing_data <- function(data){
   
   #make all ring names upper case
-  data$bto_ring <- toupper(data$bto_ring)
-  
-  data$id <- as.factor(data$id)
-  data$Pnum <- as.factor(data$pnum)
-  data$site <- as.factor(data$site)
-  data$grid_ref <- as.factor(data$grid_ref)
-  data$location <- as.factor(data$location)
-  data$retrap <- as.factor(data$retrap)
-  data$age <- as.factor(data$age)
-  data$sex <- as.factor(data$sex)
-  data$bto_species_code <- as.factor(data$bto_species_code)
-  data$bto_ring <- as.factor(data$bto_ring)
-  data$nb <- as.factor(data$nb)
-  
-  #remove any unringed - cover both upper and lower cas eto be sure 
-  data <- droplevels(subset(data, bto_ring != 'unringed'))
-  data <- droplevels(subset(data, bto_ring != 'UNRINGED'))
-  
-  #keep just those in wytham_core ?
-  data <- droplevels(subset(data, location == 'Wytham_Core'))
-  #remove those without pnum
-  data <- droplevels(subset(data, Pnum != 'NA'))
-  #remove retraps? - because only need info of chicks in nest and they're always new?
-  #just keep N 
-  # data <- droplevels(subset(data, retrap == 'N'))
-  
-  #also only keep birds age 1 - because get adults from other dataset - do this after manually!
- # data <- droplevels(subset(data, age == 1))
-  
-  
-  #just keep years from 1960 - breeding data doesn't go earlier than that 
-  data <- droplevels(subset(data, yr > 1959))
-  #remove UNRRUNT from bto_ring?
-  data <- droplevels(subset(data, bto_ring != 'UNRRUNT'))
-  
+  data <- data %>%
+    dplyr::mutate(#make all ring names upper case
+                  bto_ring = toupper(bto_ring)) %>%
+    dplyr::rename(Pnum = pnum) %>%
+    #make factors
+    dplyr::mutate(across(c('id', 'Pnum', 'site', 'retrap', 'age', 'sex', 
+                           'bto_species_code', 'bto_ring', 'nb'), factor)) %>%
+    #get rid unringed
+    dplyr::filter(bto_ring != 'unringed' &
+                    bto_ring != 'UNRINGED' &
+                    #keep only not retraps
+                    retrap == 'N' &
+                    #keep only age 1 birds
+                    age == 1 & 
+                    #keep those only in main woods
+                   location == 'Wytham_Core' &
+                   #remove thos with no Pnum
+                   Pnum != 'NA' &
+                   #just keep years from 1960 - breeding data doesn't go earlier than that 
+                   yr > 1959 &
+                   #remove UNRRUNT from bto_ring?
+                   bto_ring != 'UNRRUNT') %>%
+    droplevels()
+
+
   #REMOVE SOME GTITS
   #remove some because obvs some errors - maybe come back and work out if can keep?
   #are all duplicated assoc with different pnum each time?
@@ -247,12 +236,12 @@ clean_ringing_data <- function(data){
   data <- droplevels(subset(data, !(bto_ring %in% double_reported_twice)))
   
   #this father is listed as age 1, but is not possible, so change to NA
-  data$age[data$pnum == '20002B159' & data$bto_ring == 'VF64204'] <- NA
+  data$age[data$Pnum == '20002B159' & data$bto_ring == 'VF64204'] <- NA
   
   #get rid of pnum 19981O87 - mother is listed as age 1 and age 6 in 1 year
   #her other pnum is listed in breeding data so keeping that one,
   #just getting rid of this one 
-  data <- droplevels(subset(data, pnum != '19981O87'))
+  data <- droplevels(subset(data, Pnum != '19981O87'))
   
   return(data) 
 }
@@ -266,35 +255,24 @@ clean_ringing_data <- function(data){
 clean_ringing_data_2 <- function(data){
   
   #make all ring names upper case
-  data$Ring <- toupper(data$Ring)
-  
-  data$Spec <- as.factor(data$Spec)
-  data$Sex <- as.factor(data$Sex)
-  data$Place <- as.factor(data$Place)
-  data$Site <- as.factor(data$Site) #site is nest box I think
-  
-  #get rid of time from date and just keep year
-  data$Date <- substr(data$Date, 7, 10) 
-  data$Date <- as.factor(data$Date)
-  
-  
-  #get rid of 2013 because that is in other data as well
-  data <- droplevels(subset(data, Date != '2013'))
-  
-  #just keep N 
-  data <- droplevels(subset(data, Rtype == 'N'))
-  
-  #also only keep birds age 1 - because get adults from other dataset?? - do this after manually!
-  #data <- droplevels(subset(data, Age == 1))
-  
-  #just keep those from WYT
-  data <- droplevels(subset(data, Place == 'WYT'))
-  
-  #get rid of those with no Ring 
-  data <- droplevels(subset(data, !is.na(Ring)))
-  #orunringed
-  data <- droplevels(subset(data, Ring != 'UNRINGED'))
-  
+  data <- data %>%
+    dplyr::mutate(
+      #make all ring names upper case
+      Ring = toupper(Ring),
+      Date = substr(data$Date, 7, 10)) %>%
+    #make factors
+    dplyr::mutate(across(c('Spec', 'Sex', 'Place', 'Site', 'Date'), factor)) %>%
+    #get rid of 2013 because that is in other data as well
+    dplyr::filter(Date != '2013'&
+                    #only not retraps
+                    Rtype == 'N' &
+                    #keep age 1 only
+                    Age == 1 &
+                    #from Wytham main 
+                    Place == 'WYT' &
+                    #get rid of those with no Ring
+                    !is.na(Ring) & 
+                    Ring != 'UNRINGED')
   
   #BTIT doubles in Ring number 
   #are all duplicated assoc with different pnum each time?
@@ -331,12 +309,11 @@ isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
 #' @param data data to take.
 #' @return dataset with age of individuals best estimated.
 
-get_age <- function(data){
+get_age <- function(data, ringing_data){
   
   #Get those we know when born
   #use ringing data before cleaned - so have to read in 
-  ring_all <- utils::read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
-                       na.strings=c("", "NA"))
+  ring_all <- ringing_data
   #just keep greti
   ring_all_gtit <- ring_all %>%
     dplyr::filter(bto_species_code == 'GRETI')
