@@ -66,6 +66,43 @@ get_var_comps <- function(model){
 
 
 
+#' get heritability and phenotypic variance estimates
+#' 
+#' @param data as output from get_var_comps function.
+#' @param model which model to get estimates for.
+#' @return small tibble with Vp, VP within year, h2, h2 within year
+#' 
+
+get_herit <- function(data, model){
+  
+  herits <- tibble::tibble(name = c('Vp', 'Vp_yr', 'h2', 'h2_yr'),
+                 Est = c(#Vp - total phenotypic var
+                   sum(subset(data, model_name == model)$Est, na.rm = T ),
+                   #Vp_yr, within year phenotypic var
+                   sum(subset(data, model_name == model & name != 'Vby')$Est,
+                       na.rm = T),
+                   #h2 - across years
+                   subset(data, model_name == model & name == 'Va')$Est / 
+                     sum(subset(data, model_name == model)$Est, na.rm = T),
+                   #within year h2
+                   subset(data, model_name == model & name == 'Va')$Est / 
+                     sum(subset(data, model_name == model & name != 'Vby')$Est,
+                         na.rm = T)),
+                 SE = c(#get SE for these - first Vp
+                   NA, NA,
+                   #h2 - across years
+                   subset(data, model_name == model & name == 'Va')$SE / 
+                     sum(subset(data, model_name == model)$SE, na.rm = T),
+                   #within year h2
+                   subset(data, model_name == model & name == 'Va')$SE / 
+                     sum(subset(data, model_name == model & name != 'Vby')$SE)))
+  
+  return(herits)
+  
+}
+
+
+
 #' get repeatability value for environmental variables of Mothers
 #' 
 #' @param data dataset to use.
