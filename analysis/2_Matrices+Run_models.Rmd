@@ -9,6 +9,11 @@ when run models make sure make things factors beforehand
 
 # Dependencies
 ```{r}
+
+
+groundhog.library()
+
+
 box::use(.. / R / dirs[dirs])
 box::use(clean = ../ R / clean_data)
 box::use(mod = ../ R / for_models)
@@ -43,7 +48,7 @@ gtit_data_sub_nb <- gtit_data_sub_nb %>%
 
 #to run with a subset 
 #put dates as range e.g. 2011:2021, or 'ALL' to get all years of data 
-breed_data <- mod$choose_data(gtit_data_sub_nb, years = 2010:2020)
+breed_data <- mod$choose_data(gtit_data_sub_nb, years = 'ALL')
 unique(breed_data$breeding_year)
 nrow(breed_data) #11526
 
@@ -90,6 +95,10 @@ env_matrix <- env_var_euc_scal_PD$mat
 
 saveRDS(env_matrix, file = file.path(dirs$data,'env_matrix.rds'))
 
+env_matrix <- readRDS(file.path(dirs$data, 'env_matrix.rds'))
+
+
+
 ```
 
 
@@ -117,7 +126,12 @@ spat_mat_conv_sc <- 1- spat_mat_conv / max (spat_mat_conv, na.rm=TRUE)
 spat_mat_conv_sc_PD <- Matrix::nearPD(spat_mat_conv_sc)
 spatial_matrix <- spat_mat_conv_sc_PD$mat
 
+subset(spatial_matrix, spatial_matrix[,4] == 16)
+
 saveRDS(spatial_matrix, file = file.path(dirs$data,'spatial_matrix.rds'))
+
+spatial_matrix <- readRDS(file.path(dirs$data, 'spatial_matrix.rds'))
+
 
 ```
 
@@ -142,17 +156,15 @@ RUN MODELS
 
 #pedigree data input 
 ped_data <- read.csv(file.path(dirs$data, 'GTIT-pedigree-for-asreml.csv'), na.strings=c("", "NA"))
-nrow(ped_data) #15539
+nrow(ped_data) #15745
 
-ped_data_sub <- ped_data %>%
-  dplyr::filter(dam %in% breed_data$Mother | id %in% breed_data$Mother)
-nrow(ped_data_sub) #1489
-
-
+ped_data <- ped_gtit_final
 #get inverse of matrix
-ped_data_inv <- asreml::ainverse(ped_data_sub)
+ped_data_inv <- asreml::ainverse(ped_data)
 
 #create another column to associate with second matrix
+
+breed_data$Mother <- as.factor(breed_data$Mother)
 breed_data$Mother2 <- breed_data$Mother
 breed_data$Mother3 <- breed_data$Mother
 
@@ -167,7 +179,7 @@ breed_data$Mother3 <- breed_data$Mother
 # LAYING DATE  ------------------------------------------------------------
 
 #model basic 
-LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
+LD_basic_test2 <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                   random = ~vm(Mother, ped_data_inv) + 
                             ide(Mother, ped_data_inv) +
                             breeding_year,
@@ -176,7 +188,7 @@ saveRDS(LD_basic, file = file.path(dirs$output,'LD_basic.rds'))
 
 
 #model with NB
-LD_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
+LD_NB_2 <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                 random = ~vm(Mother, ped_data_inv) + 
                   ide(Mother, ped_data_inv) +
                   breeding_year + 
@@ -191,19 +203,10 @@ LD_spat <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                          ide(Mother, ped_data_inv) +
                          vm(Mother2, spatial_matrix) +
                          breeding_year,
-                       data = breed_data)
+                       data = breed_data,
+                  workspace = 300e6, pworkspace=300e6)
 saveRDS(LD_spat, file = file.path(dirs$output,'LD_spat.rds'))
 
-
-#without distance matrix - multiple age lvels + nest box random 
-LD_spat_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
-                      random = ~vm(Mother, ped_data_inv) + 
-                        ide(Mother, ped_data_inv) +
-                        vm(Mother2, spatial_matrix) +
-                        breeding_year + 
-                        nest.box,
-                      data = breed_data)
-saveRDS(LD_spat_NB, file = file.path(dirs$output,'LD_spat_NB.rds'))
 
 
 #model with envir sim matrix
@@ -212,19 +215,11 @@ LD_envir <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                           ide(Mother, ped_data_inv) +
                           vm(Mother2, env_matrix) +
                           breeding_year,
-                        data = breed_data)
+                        data = breed_data,
+                  workspace = 300e6, pworkspace=300e6,
+                  maxiter = 50)
 saveRDS(LD_envir, file = file.path(dirs$output,'LD_envir.rds'))
 
-
-#model with enriov sim matrix - with mutliple age levels + nest box random
-LD_envir_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
-                       random = ~vm(Mother, ped_data_inv) + 
-                         ide(Mother, ped_data_inv) +
-                         vm(Mother2, env_matrix) +
-                         breeding_year + 
-                         nest.box,
-                       data = breed_data)
-saveRDS(LD_envir_NB, file = file.path(dirs$output,'LD_envir_NB.rds'))
 
 
 # #wiht both matrices - Fbreeding_age_group
@@ -267,19 +262,10 @@ HD_dist <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
                          ide(Mother, ped_data_inv) +
                          vm(Mother2, spatial_matrix) +
                          breeding_year,
-                       data = breed_data)
+                       data = breed_data,
+                  workspace = 300e6, pworkspace=300e6,
+                  maxiter = 50)
 saveRDS(HD_dist, file = file.path(dirs$output,'HD_dist.rds'))
-
-
-#without distance matrix - multiple age lvels + nest box random 
-HD_dist_NB <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                      random = ~vm(Mother, ped_data_inv) + 
-                        ide(Mother, ped_data_inv) +
-                        vm(Mother2, spatial_matrix) +
-                        breeding_year + 
-                        nest.box,
-                      data = breed_data)
-saveRDS(HD_dist_NB, file = file.path(dirs$output,'HD_dist_age_NB.rds'))
 
 
 #model with envir sim matrix
@@ -288,19 +274,8 @@ HD_envir <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
                           ide(Mother, ped_data_inv) +
                           vm(Mother2, env_matrix) +
                           breeding_year,
-                        data = breed_data)
+                        data = breed_datac)
 saveRDS(HD_envir, file = file.path(dirs$output,'HD_envir.rds'))
-
-
-#model with enriov sim matrix - with mutliple age levels + nest box random
-HD_envir_NB <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                       random = ~vm(Mother, ped_data_inv) + 
-                         ide(Mother, ped_data_inv) +
-                         vm(Mother2, env_matrix) +
-                         breeding_year + 
-                         nest.box,
-                       data = breed_data)
-saveRDS(HD_envir_NB, file = file.path(dirs$output,'HD_envir_NB.rds'))
 
 
 
