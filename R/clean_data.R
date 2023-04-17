@@ -32,20 +32,21 @@ clean_breeding_data <- function(data){
                   #make a column with the nest box code in
                   nest.box = as.factor(substr(Pnum, start = 6, 15))) %>%
     #get rid of any mixed species
-    dplyr::mutate_at(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
-                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), as.factor) %>%
+    dplyr::mutate(across(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
+                       'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), factor)) %>%
     dplyr::filter(Mixed.species != TRUE) %>%
     droplevels()
-    
+  
   #save this for later - for pedigree want to keep as many as possible                
   #data$Experiment.codes <- as.factor(data$Experiment.codes)
+  
   #take out those that have NA for lay date
   # data <- droplevels(subset(data, !is.na(April.lay.date)))
   
   #after made nest box column adjust the section of some boxes
   #some are listed as unknown, but are within the sections of the woods
   #so rename their section with actual section
-  #then afterwards can remove those not in the woods...
+  #then afterwards can remove those not in the woods
   #pnums of those with unknown section
   unknown_Pnums <- data$Pnum[data$Section == 'unknown']
   #if start with CP, EX, W, SW, O, C, MP, P, then keep, others get rid
@@ -401,7 +402,7 @@ get_age <- function(data){
   
   #Get those we know when born
   #use ringing data before cleaned - so have to read in 
-  ring_all <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
+  ring_all <- utils::read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
                        na.strings=c("", "NA"))
   #just keep greti
   ring_all_gtit <- ring_all %>%
