@@ -11,7 +11,6 @@ box::use(dplyr)
 box::use(clean = ../ R / clean_data)
 
 
-
 # FUNCTIONS ────────────────────────────────────────────────────────────────── #
 
 
@@ -21,8 +20,6 @@ box::use(clean = ../ R / clean_data)
 #' @return dataset clean. 
 
 clean_breeding_data <- function(data){
-  
-  #factorise columns
   data <- data %>%
     dplyr::mutate(Lay.date = as.Date(data$Lay.date, '%d / %m / %Y'),
                   Hatch.date = as.Date(data$Hatch.date, '%d / %m / %Y'),
@@ -31,19 +28,17 @@ clean_breeding_data <- function(data){
                   Father = toupper(Father),
                   #make a column with the nest box code in
                   nest.box = as.factor(substr(Pnum, start = 6, 15))) %>%
-    #get rid of any mixed species
+    #factorise columns
     dplyr::mutate(across(c('Pnum', 'Section', 'Mixed.species', 'Species', 'Closed', 'Missing.entire.brood', 
                        'Suspected.predation', 'Father', 'Mother', 'Experiment.codes'), factor)) %>%
+    #get rid of any mixed species
     dplyr::filter(Mixed.species != TRUE) %>%
     droplevels()
   
   #save this for later - for pedigree want to keep as many as possible                
-  #data$Experiment.codes <- as.factor(data$Experiment.codes)
+  #data <- droplevels(subset(data, !is.na(April.lay.date)))
   
-  #take out those that have NA for lay date
-  # data <- droplevels(subset(data, !is.na(April.lay.date)))
-  
-  #after made nest box column adjust the section of some boxes
+  #adjust the section of some boxes
   #some are listed as unknown, but are within the sections of the woods
   #so rename their section with actual section
   #then afterwards can remove those not in the woods
@@ -58,8 +53,6 @@ clean_breeding_data <- function(data){
       #if true then paste section into Section column
       data$Section[data$Pnum == i] <- tolower(substr(data$nest.box[data$Pnum == i], start = 1,2)),
       #if not true check if its in single letter section
-      #don't include B because then it keeps BY boxes which aren't in woods
-      #there are no B boxes so it doesn't matter
       ifelse(substr(data$nest.box[data$Pnum == i], start = 1,1) %in% c('W','O', 'C', 'P'),
              #if yes keep and rename section
              data$Section[data$Pnum == i] <- tolower(substr(data$nest.box[data$Pnum == i], start = 1,1)),
@@ -72,6 +65,8 @@ clean_breeding_data <- function(data){
     dplyr::filter(Section != 'unknown' & Section != 'he') %>%
   droplevels()
 
+  #NOW FIXING SOME OTHER ERRORS IN DATA
+  
   #some individuals recorded as both species
   #20101O253 - has father as blue tit mother as great tit young as blue tits - get rid 
   #20071SW75 - mother and father need to change - mother = T176160, father = NA 
@@ -95,7 +90,6 @@ clean_breeding_data <- function(data){
 
   
   ###GREAT TIT SPECIFIC CLEANING 
-  
   data <- data %>%
     dplyr::filter(
       #get rid of Pnum 20081EX27, 20051EX66
@@ -110,25 +104,13 @@ clean_breeding_data <- function(data){
       #20182EX14 this pnum says no fledglings recorded, and all same fledglings are named under another pnum (20181EX14)
       Pnum != '20182EX14')
       
-  #check if any other parents are listed as both mother and father?
-  # breed_gtit_noFNA <- droplevels(subset(breed_gtit, !(is.na(Father))))
-  # breed_gtit_noFNA$Father[breed_gtit_noFNA$Father %in% breed_gtit$Mother]
-  # #TK26998 L315432 X239739 - have only one entry for each so remove all 
-  # subset(breed_gtit, Father == 'TK26998')
-  # subset(breed_gtit, Mother == 'TK26998')
+  #parents are listed as both mother and father?
   #pnums = 
   #TK26998, 20081SW112 - make father NA,  and 20081O75 - make mother NA 
   data$Father[data$Pnum == '20081SW112'] <- NA
   data$Mother[data$Pnum == '20081O75'] <- NA
   
-  
-  # #L315432, 20101ST5 - L315433 is male and L315432 is female - need to swap them,  and 20111ST5 stay same
-  # levels(data$Father) <- c(levels(data$Father), 'L315433')
-  # data$Mother[data$Pnum == '20101ST5'] <- 'L315432'
-  # data$Father[data$Pnum == '20101ST5'] <- 'L315433'
-  #is in unknown section so already removed now
-  
-  #X239739, 20101W97 - says X239739 male, and F833150 female, - make male NA?
+  #X239739, 20101W97 - says X239739 male, and F833150 female, - make male NA
   #         20121EX39 - X239739 is female - get rid of all, because has no father recorded 
   data <- droplevels(subset(data, Pnum != '20121EX39'))
   data$Father[data$Pnum == '20101W97'] <- NA
@@ -139,9 +121,8 @@ clean_breeding_data <- function(data){
   data$Father[data$Pnum == '20121W56'] <- NA
   data$Mother[data$Pnum == '20131W56'] <- NA
   
-  
   #these are same mothers 2 breeding attempts in 1 year
-  #with less than 20 days inbetween them, but both/first has fledglings...
+  #with less than 20 days inbetween them, but both have fledglings, or first has fledglings - impossible...
   #need almost 2 weeks  to hatch and 3 weeks to fledge usually... 
   #so just cutting all out 
   too_short_int <- c('19651O86', '19821EX58', '20061EX2', '20181C32',
@@ -151,8 +132,8 @@ clean_breeding_data <- function(data){
   #keep 19721O13, 19881W17, 19821EX61, 19891W103A, 20061EX81A, 19971EX47A, 
   #edit 19881W38 to make mother = NA
   data$Mother[data$Pnum == '19881W38'] <- NA
-  #edt 19971EX48A, make parents VR26902 and J644096 instead - in breeding data that pnum has 2 diff parents
-  #but so second pnum where those paretns are recorded with young
+  #edit 19971EX48A, make parents VR26902 and J644096 instead - in breeding data that pnum has 2 diff parents
+  #but so second pnum where those parents are recorded with young
   #this pnum has 2 different parents, so change parents in breeding data to them 
   #J644096 is recorded as female at one point so make mother and other father.
   #first have to add them as factor levels
@@ -163,7 +144,6 @@ clean_breeding_data <- function(data){
   
   #20121O64 listed as great tit but is actually blue tit 
   data$Species[data$Pnum == '20121O64'] <- 'b'
-  
   
   return(data)
 }
