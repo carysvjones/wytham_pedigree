@@ -1,5 +1,5 @@
 ---
-title: "prep_data"
+title: "Preparing Data"
 author: "Carys Jones"
 date: '2023-01-26'
 ---
@@ -23,6 +23,9 @@ box::use(magrittr[`%>%`])
 ```
 
 
+Script to prepare data for running animal models.
+First creating pedigree by merging together breeding and ringing data.
+Then taking breeding attempt data and getting local environment for each individual.
 
 
 PREPARE PEDIGREE
@@ -32,16 +35,9 @@ PREPARE PEDIGREE
 
 # MERGE BREEDING AND RINGING DATA -----------------------------------------
 
-#input breeding attempt data 1960-2022
-breed <- read.csv(file.path(dirs$data, 'LT_breeding_data_greti_bluti_1960_2022.csv'), na.strings=c("", "NA"))
+#input clean breeding attempt data 1960-2022
+breed <- read.csv(file.path(dirs$data_output, 'LT_breeding_data_greti_bluti_1960_2022.csv'), na.strings=c("", "NA"))
 nrow(breed) #41987
-
-# clean dataset 
-breed <- clean$clean_breeding_data(breed)
-nrow(breed) #38017
-
-
-# GTIT Breeding Data ------------------------------------------------------
 
 #subset to just keep great tits 
 breed_gtit <- breed %>% 
@@ -59,15 +55,10 @@ summary(breed_gtit$Father) #6820
 
 # READ IN - Ringing Data  --------------------------------------------------
 
-
-ring_all <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
+ring_all <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
                   na.strings=c("", "NA"))
 
-
-
-# GTIT - Ringing data  -----------------------------------------------
-
-#just keep great tits and those age 1 
+#just keep great tits  
 ring_gtit <- ring_all %>% 
   dplyr::filter(bto_species_code == 'GRETI') 
 
@@ -78,30 +69,24 @@ length(unique(ring_gtit$nb)) #1121
 length(unique(ring_gtit$bto_ring)) #91250
 
 
-# GTIT MERGE - ring and breed u ---------------------------------------
+# MERGE - ring and breed  ---------------------------------------
 
 #merge both datasets by Pnum
 breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = 'Pnum', all = T) %>%
-  #filter out those with no bto_ring - leave in for now  are important
-  #if have mother with no offspring, she might have a mother too, so want to keep her
-  #will be filtered out when fix pedigree 
-  # dplyr::filter(!is.na(bto_ring)) %>%
   #keep only some columns
   dplyr::select(bto_ring, Father, Mother, sex)
 
+#summaries
 nrow(breed_ring_gtit) #96695
 length(unique(breed_ring_gtit$bto_ring)) #91251
 length(unique(breed_ring_gtit$Mother)) #8532
 length(unique(breed_ring_gtit$Father)) #7216
 
-# CUT THIS?
-# write.csv(breed_ring_gtit, file = file.path(dirs$data,'GTIT-pedigree_merged_data_all_years.csv'), row.names = F)
 
-# # MAKE PEDIGREE ----------------------------------------------------------
+# CREATING PEDIGREE ----------------------------------------------------------
 
-#make subset of just the first 3 columns 
+#rename columns 
 ped_gtit_short <- breed_ring_gtit %>%
-  # dplyr::select(bto_ring, Mother, Father) %>%
   dplyr::rename(id = bto_ring,
          dam = Mother,
          sire = Father)
@@ -109,17 +94,25 @@ ped_gtit_short <- breed_ring_gtit %>%
 head(ped_gtit_short)
 nrow(ped_gtit_short) #96695
 
-#fix the pedigree
+#fix the pedigree - adds any missing individuals to id column and orders it correctly
 ped_gtit_short_ext_fix <- pedantics::fixPedigree(ped_gtit_short)
 ped_gtit_short_ext_fix <- MasterBayes::orderPed(ped_gtit_short_ext_fix)
-nrow(ped_gtit_short_ext_fix) #98848
 
-#make column for LD with dummy values to say if have LD recorded or not - just so can run this function 
+#this is the overall huge pedigree!
+nrow(ped_gtit_short_ext_fix) #98848
+#so can save this here...
+write.csv(ped_gtit_short_ext_fix, file = file.path(dirs$data_output,'GTIT-pedigree-full.csv'), row.names = F)
+
+
+
+#I myself then keep just those that have a laying date recorded, as that's what is useful for my analysis
+
+#make column for LD with dummy values to say if have LD recorded or not - so I can keep only informative individuals 
 ped_gtit_short_ext_fix_LD <- dplyr::mutate(ped_gtit_short_ext_fix, LD_num = 
                                       ifelse(ped_gtit_short_ext_fix$id %in% breed_gtit$Father |
                                              ped_gtit_short_ext_fix$id %in% breed_gtit$Mother, 1, NA))
 
-# subset those with LD
+# subset those with a LD
 ped_gtit_final <- ped_gtit_short_ext_fix_LD %>%
   dplyr::filter(!is.na(LD_num)) %>%
   droplevels() %>%
@@ -130,9 +123,9 @@ nrow(ped_gtit_final) #15745
 #get pedigree stats - this take a long time to run 
 # pedigree_stats <- pedantics::pedigreeStats(ped_gtit_short_ext_fix, retain = 'informative')
 # nrow(pedigree_stats$analyzedPedigree) #14559
-# saveRDS(pedigree_stats, file = file.path(dirs$data,'GTIT-pedStatSummary-full_output.rds'), row.names = F)
+# saveRDS(pedigree_stats, file = file.path(dirs$data_output,'GTIT-pedStatSummary-full_output.rds'), row.names = F)
 
-write.csv(ped_gtit_final, file = file.path(dirs$data,'GTIT-pedigree-for-asreml.csv'), row.names = F)
+write.csv(ped_gtit_final, file = file.path(dirs$data_output,'GTIT-pedigree-for-asreml.csv'), row.names = F)
 
 
 ```
@@ -184,10 +177,10 @@ nrow(breed_gtit_noNA) #12151
 
 # ADD AGE  ----------------------------------------------------------------
 
-ring <- read.csv(file.path(dirs$data, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), na.strings=c("", "NA"))
+ring <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), na.strings=c("", "NA"))
 
 
-breed_gtit_noNA_age <- get_age(breed_gtit_noNA, ring)
+breed_gtit_noNA_age <- clean$get_age(breed_gtit_noNA, ring)
 table(breed_gtit_noNA_age$Fem_breed_age)
 
 
@@ -218,7 +211,7 @@ ADD SPATIAL DATA
 
 #Just open habitat data straight away 
 
-habitat_data <- read.csv(file.path(dirs$data, 'Habitat_data_nestboxes.csv'), na.strings = "NA")
+habitat_data <- read.csv(file.path(dirs$data_output, 'Habitat_data_nestboxes.csv'), na.strings = "NA")
 
 # nest_sub <- unique(breed_gtit_noNA_age_sub$nest.box[!(breed_gtit_noNA_age_sub$nest.box %in% habitat_data$Box)])
 
@@ -322,35 +315,6 @@ gtit_data_summ <- gtit_data_sub_nb %>%
 
 
 
-
-
-#Repeatability tests 
-# 
-# rep_edge <- mod$rep_val(data = gtit_data_sub_nb, response = 'edge.EDI.')
-# summary(rep_edge) 
-# plot(rep_edge, cex.main = 1)
-# 
-# rep_edge_sqrt <- rep_val(data = gtit_data_sub_nb, response = 'sqrt(edge.EDI.)')
-# summary(rep_edge_sqrt)
-# 
-# rep_alt <- mod$rep_val(data = gtit_data_sub_nb, response = 'altitude.m.')
-# summary(rep_alt)
-# plot(rep_alt, cex.main = 1)
-# 
-# rep_north <- mod$rep_val(data = gtit_data_sub_nb, response = 'northness')
-# summary(rep_north)
-# plot(rep_north, cex.main = 1)
-# 
-# rep_trees <- mod$rep_val(data = gtit_data_sub_nb, response = 'No_trees_75m')
-# summary(rep_trees)
-# plot(rep_trees, cex.main = 1)
-# 
-# rep_area <- mod$rep_val(data = gtit_data_sub_nb, response = 'area_polygon.G_crop3')
-# summary(rep_area)
-# plot(rep_area, cex.main = 1)
-# 
-
-  
 #MEAN COORDINATES OF NEST BOX FOR MULTI NESTERS
 #first make line for each breeding attempt
 #then after individual will have same coords for all rows/breeding attempts
@@ -369,7 +333,7 @@ gtit_data_sub_nb <- gtit_data_sub_nb %>%
 
 unique(gtit_data_sub_nb$breeding_year)
 #output data
-write.csv(gtit_data_sub_nb, file = file.path(dirs$data,'GTIT_data_anim_mod.csv'), row.names = F)
+write.csv(gtit_data_sub_nb, file = file.path(dirs$data_output,'GTIT_data_anim_mod.csv'), row.names = F)
 
 
 ```
