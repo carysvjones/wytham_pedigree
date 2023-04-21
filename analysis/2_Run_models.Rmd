@@ -29,8 +29,8 @@ nrow(gtit_data_sub_nb) #11660
 gtit_data_sub_nb <- gtit_data_sub_nb %>%
    dplyr::mutate_at(c('breeding_year', 'Mother', 'Fbreeding_age_group', 'nest.box'), as.factor) 
 
-#to run with a subset - if you want to mess around a run models with subset of years etc
-#helpful when running big models to test things - I wrote a basic function to do that quickly
+#function if you want to run with a subset - if you want to mess around a run models with subset of years etc
+#helpful when running big models to test things - I wrote a basic function to do it quickly
 #put dates as range e.g. 2011:2021, or 'ALL' to get all years of data 
 breed_data <- mods$choose_data(gtit_data_sub_nb, years = 'ALL')
 #checks
@@ -63,7 +63,8 @@ ped_data_inv <- asreml::ainverse(ped_data)
 
 #For laying date - running some basic models, shouldn't take too long to run 
 
-#model basic  - 
+# BASIC MODEL --------------------------------------------------------------
+
 #fixed effect of breeding age (as juvenile = 1, and adult = older than 1)
 #random effect of breeding year, vm = additive genetic effect, ide = permanent environment effect
 LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
@@ -72,14 +73,14 @@ LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                             breeding_year,
                   data = breed_data)
 #save output
-saveRDS(LD_basic, file = file.path(dirs$output,'LD_basic.rds'))
+saveRDS(LD_basic, file = file.path(dirs$model_output,'LD_basic.rds'))
 
 #look at output
 summary(LD_basic)$varcomp
 
 
+# NESTBOX MODEL --------------------------------------------------------------
 
-#model with NB -
 #same as above but now including the nest box ID as a random effect too 
 LD_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                 random = ~vm(Mother, ped_data_inv) + 
@@ -87,6 +88,36 @@ LD_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                   breeding_year + 
                   nest.box,
                 data = breed_data)
-saveRDS(LD_NB, file = file.path(dirs$output,'LD_NB.rds'))
+saveRDS(LD_NB, file = file.path(dirs$model_output,'LD_NB.rds'))
 
+#look at output
 summary(LD_NB)$varcomp
+
+
+# LIKELIHOOD RATIO TESTS --------------------------------------------------------------
+
+#test the significance of nest box effect here - compare models with and random effect and compare the final log-likelihoods
+LD_basic$loglik #-25849.08
+LD_NB$loglik #-25734.4
+#test statistic equal to twice the absolute difference in these log-likelihoods is assumed to be
+#distributed as Chi square with one degree of freedom. So here:
+2 * (LD_NB$loglik - LD_basic$loglik) #229.3555
+1 - pchisq(2 * (LD_NB$loglik - LD_basic$loglik), 1) #0
+#corresponds to P < 0.0001. can conclude that nestbox ID as arandom effect significantly improves the model, 
+
+
+# FIXED EFFECTS --------------------------------------------------------------
+
+summary(LD_basic, coef = T)$coef.fixed
+#can see that the average yearling bird lays 2.348 (0.099SE) days later than adults.
+#wald test - assess their significance with a conditional Wald F-test
+asreml::wald.asreml(LD_basic, ssType = "conditional", denDF = "numeric")  # P-value for fixed effects
+#The probability (‘Pr’) of zero in the Wald test above shows that age is a  significant 
+
+#nestbox model
+summary(LD_NB, coef = T)$coef.fixed
+#wald test
+asreml::wald.asreml(LD_NB, ssType = "conditional", denDF = "numeric")  # P-value for fixed effects
+
+
+```
