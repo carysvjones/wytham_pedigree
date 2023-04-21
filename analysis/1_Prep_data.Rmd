@@ -58,9 +58,10 @@ summary(breed_gtit$Father) #6820
 ring_all <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
                   na.strings=c("", "NA"))
 
-#just keep great tits  
+#just keep great tits and only those that are age 1 (chicks)
 ring_gtit <- ring_all %>% 
-  dplyr::filter(bto_species_code == 'GRETI') 
+  dplyr::filter(bto_species_code == 'GRETI',
+                age == 1)
 
 #quick summaries
 nrow(ring_gtit) #91250
@@ -205,17 +206,13 @@ summary(as.factor(breed_gtit_noNA_age_sub$Fem_breed_age))
 
 ADD SPATIAL DATA 
 
-
 ```{r}
 
-
-#Just open habitat data straight away 
+#get habitat data straight away 
 
 habitat_data <- read.csv(file.path(dirs$data_output, 'Habitat_data_nestboxes.csv'), na.strings = "NA")
 
-# nest_sub <- unique(breed_gtit_noNA_age_sub$nest.box[!(breed_gtit_noNA_age_sub$nest.box %in% habitat_data$Box)])
-
-#now merge with breeding data!
+#now merge with breeding data
 gtit_data_sub_nb <- merge(breed_gtit_noNA_age_sub, habitat_data, by = 'Pnum')
 nrow(gtit_data_sub_nb) #11660 - only a few hundred missing from before 
 
@@ -225,101 +222,17 @@ gtit_data_sub_nb$area_polygon.G_crop3[gtit_data_sub_nb$area_polygon.G > 30000] <
 summary(gtit_data_sub_nb$area_polygon.G_crop3)
 
 
-# SPATIAL MATRIX ----------------------------------------------------------
+# FOR SIMILARITY MATRICES ----------------------------------------------------------
 
-# FINDING MIDPOINT IN SPACE FOR INDIVIDUALS -------------------------------
-
-#data set of all that have nest box
+#data 
 nrow(gtit_data_sub_nb) #11660
 length(unique(gtit_data_sub_nb$Mother)) #7595
-
-summary(gtit_data_sub_nb$April.lay.date) #-5 to 59, median = 25
-summary(gtit_data_sub_nb$April.hatch.date)#780 NAs
-summary(gtit_data_sub_nb$Clutch.size) #43 NAs
 
 #if individuals have multiple breeding attempts
 #need to find midpoint location of nest boxes
 #so can use that to make matrix of distance between all individuals
 
-#look at how many use >1 box
-gtit_data_sub_nb_multisumm <- gtit_data_sub_nb %>%
-  dplyr::group_by(., Mother) %>%
-  dplyr::summarise(., nest_boxes = length(unique(nest.box)),
-            breed_attempts = length(nest.box))
-hist(gtit_data_sub_nb_multisumm$nest_boxes)
-hist(gtit_data_sub_nb_multisumm$breed_attempts)
-
-
-#plot these just out of interest to see how far boxes are away from eachother?
-###WORK THIS OUT
-#just keep breeding attempts for mothers that moved boxes
-
-#subset 3 birds
-multi_box <- gtit_data_sub_nb %>%
-  dplyr::group_by(., Mother) %>%
-  dplyr::filter(length((nest.box)) > 1) %>%
-  dplyr::mutate(
-    x2 = dplyr::lead(x),
-    y2 = dplyr::lead(y), 
-    edge2 = dplyr::lead(edge.EDI.),
-    alt2 = dplyr::lead(altitude.m.),
-    north2 = dplyr::lead(northness),
-    trees2 = dplyr::lead(No_trees_75m),
-    area2 = dplyr::lead(area_polygon.G_crop3),
-    nest.box2 = dplyr::lead(nest.box),
-    breeding_year2 = dplyr::lead(breeding_year)) %>%
-  
-  dplyr::mutate(dist = sqrt((x2 - x)^2 + (y2 - y)^2),
-                edge_diff = abs(edge2 - edge.EDI.),
-                alt_diff = abs(alt2 - altitude.m.),
-                north_diff = abs(north2 - northness),
-                tree_diff = abs(trees2 - No_trees_75m), 
-                area_diff = abs(area2 - area_polygon.G_crop3)) %>%
-  
-  dplyr::ungroup() %>%
-  dplyr::select(Mother, breeding_year, breeding_year2, x, y , x2, y2, nest.box, nest.box2, dist,
-                edge_diff, alt_diff, north_diff, tree_diff, area_diff)
-
-
-#get rid of distance NA's and 0 distance
-nrow(multi_box) #5503
-multi_box <- multi_box %>%
-  dplyr::filter(!is.na(dist))
-nrow(multi_box) #3393
-
-summary(multi_box)
-length(unique(multi_box$Mother)) #2559
-length(unique(multi_box$Mother)) / length(unique(gtit_data_sub_nb$Mother)) #33.7% mothers breed in multi years
-
-length(unique(subset(multi_box, dist > 0)$Mother)) / length(unique(gtit_data_sub_nb$Mother)) #27.8% breed in diff boxes
-
-#DISTANCES
-median(multi_box$dist) #71.7m
-mean(multi_box$dist) #109.6m
-range(multi_box$dist) #0 - 2647.5m
-
-multi_box_summ <- multi_box %>%
-  dplyr::summarise(dist_med = median(dist, na.rm = T), 
-                edge_med = median(edge_diff, na.rm = T),
-                alt_med = median(alt_diff, na.rm = T),
-                north_med = median(north_diff, na.rm = T),
-                tree_med = median(tree_diff, na.rm = T),
-                area_med = median(area_diff, na.rm = T))
-
-gtit_data_summ <- gtit_data_sub_nb %>%
-  dplyr::summarise(edge_med = median(edge.EDI., na.rm = T),
-                alt_med = median(altitude.m., na.rm = T),
-                north_med = median(northness, na.rm = T),
-                tree_med = median(No_trees_75m, na.rm = T),
-                area_med = median(area_polygon.G_crop3, na.rm = T))
-
-
-
-#MEAN COORDINATES OF NEST BOX FOR MULTI NESTERS
-#first make line for each breeding attempt
-#then after individual will have same coords for all rows/breeding attempts
-#so can then jsut keep one row per individual 
-
+#GET MEAN VALUES OF NEST BOX FOR MULTI NESTERS
 gtit_data_sub_nb <- gtit_data_sub_nb %>%
   dplyr::group_by(Mother) %>%
   dplyr::mutate(x_mean = mean(x),
@@ -332,6 +245,7 @@ gtit_data_sub_nb <- gtit_data_sub_nb %>%
   dplyr::ungroup()
 
 unique(gtit_data_sub_nb$breeding_year)
+
 #output data
 write.csv(gtit_data_sub_nb, file = file.path(dirs$data_output,'GTIT_data_anim_mod.csv'), row.names = F)
 
