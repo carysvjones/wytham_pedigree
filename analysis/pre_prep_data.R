@@ -42,7 +42,7 @@ nrow(breed) #41987
 
 # clean dataset 
 breed <- clean$clean_breeding_data(breed)
-nrow(breed) #38017
+nrow(breed) #40255
 
 write.csv(breed, file = file.path(dirs$data_output,'LT_breeding_data_greti_bluti_1960_2022.csv'), row.names = F)
 
@@ -62,7 +62,7 @@ nrow(ring2021) #8197
 
 #read in 2022 data 
 ring2022 <- read.csv(file.path(dirs$data_raw, 'ebmp_ringing_2022.csv'), na.strings=c("", "NA")) 
-nrow(ring2022) #8197
+nrow(ring2022) #7469
 
 
 #bind
@@ -78,7 +78,7 @@ ring <- read.csv(file.path(dirs$data_raw, 'legacy_ringing_records_GT&BT_up_to_20
   clean$clean_ringing_data(.) %>%
   #keep only some columns
   dplyr::select(Pnum, age, sex, bto_species_code, bto_ring, yr, nb, retrap)
-nrow(ring) #151785
+nrow(ring) #156035
 
 # Clean Ringing data 2013-2022  -------------------------------------
 
@@ -98,12 +98,11 @@ ring2 <- ring2 %>%
   ) %>%
   #keep only selected columns
   dplyr::select(Pnum, age, sex, bto_species_code, bto_ring, yr, nb, retrap)
-
-nrow(ring2) #35282
+nrow(ring2) #43087
 
 #bind
 ring_all <- rbind(ring, ring2)
-nrow(ring_all) #187067
+nrow(ring_all) #199122
 
 #save
 write.csv(ring_all, file = file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), row.names = F)
@@ -141,14 +140,14 @@ wood.outline <- sf::st_read(file.path(dirs$data_raw, '/maps/perimeter poly with 
 #extracting the first polygon because that's the bit of the woods we care about
 wood.outline <- wood.outline[1,]
 #need to transform wood outline
-wood.outline <- st_transform(wood.outline, 27700)
+wood.outline <- sf::st_transform(wood.outline, 27700)
 
 #need breeding data with nest box locations 
-nrow(breed) #40206
+nrow(breed) #40255
 
 breeding.data <- breed %>%
   dplyr::inner_join(., nestbox, by = c('nest.box' = 'Box'))
-nrow(breeding.data) #37577
+nrow(breeding.data) #37620
 
 #get subset of just great tits
 breeding.data.G <- subset(breeding.data, Species == 'g' )
@@ -179,8 +178,8 @@ for (i in unique(breeding.data$year)){
   breeding.data.G.SUB <- subset(breeding.data.G, year == i)
   
   #get voronoi polygons
-  territories_G <- sf::st_voronoi(st_union(breeding.data.G.SUB), box)
-  territories_G <- sf::st_intersection(st_cast(territories_G), sf::st_union(wood.outline))
+  territories_G <- sf::st_voronoi(sf::st_union(breeding.data.G.SUB), box)
+  territories_G <- sf::st_intersection(sf::st_cast(territories_G), sf::st_union(wood.outline))
   
   #joining the territory polygons back up with the individuals that bred in them
   territories_G <- sf::st_sf(geom = territories_G)
