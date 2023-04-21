@@ -37,29 +37,27 @@ PREPARE PEDIGREE
 
 #input clean breeding attempt data 1960-2022
 breed <- read.csv(file.path(dirs$data_output, 'LT_breeding_data_greti_bluti_1960_2022.csv'), na.strings=c("", "NA"))
-nrow(breed) #41987
+nrow(breed) #40255
 
 #subset to just keep great tits 
 breed_gtit <- breed %>% 
   dplyr::filter(Species == 'g')
-nrow(breed_gtit) #17214
+nrow(breed_gtit) #18000
 
 #quick summaries
-nrow(breed_gtit) #17214
+nrow(breed_gtit) #18000
 length(unique(breed_gtit$Pnum)) #18000
 length(unique(breed_gtit$Mother)) #8532
-summary(breed_gtit$Mother) #3831 mothers unknown  
+summary(as.factor(breed_gtit$Mother)) #3831 mothers unknown  
 length(unique(breed_gtit$Father)) #7216
-summary(breed_gtit$Father) #6820
+summary(as.factor(breed_gtit$Father)) #6820
 
 
 # READ IN - Ringing Data  --------------------------------------------------
 
-ring_all <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
-                  na.strings=c("", "NA"))
-
-#just keep great tits and only those that are age 1 (chicks)
-ring_gtit <- ring_all %>% 
+ring_gtit <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
+                  na.strings=c("", "NA")) %>% 
+  #just keep great tits and only those that are age 1 (chicks)
   dplyr::filter(bto_species_code == 'GRETI',
                 age == 1)
 
@@ -126,13 +124,14 @@ nrow(ped_gtit_final) #15745
 # nrow(pedigree_stats$analyzedPedigree) #14559
 # saveRDS(pedigree_stats, file = file.path(dirs$data_output,'GTIT-pedStatSummary-full_output.rds'), row.names = F)
 
-write.csv(ped_gtit_final, file = file.path(dirs$data_output,'GTIT-pedigree-for-asreml.csv'), row.names = F)
+write.csv(ped_gtit_final, file = file.path(dirs$data_output,'GTIT-pedigree-subset.csv'), row.names = F)
 
 
 ```
 
 
 PREPARE DATA
+For running animal models
 
 
 ```{r}
@@ -147,22 +146,7 @@ breed_gtit_noNA <- breed_gtit %>%
   dplyr::filter(is.na(breed_gtit$Experiment.codes) &
                   !is.na(breed_gtit$April.lay.date))
 
-
-#why choose to just keep mothers?
-#how many have no mother
-nrow(subset(breed_gtit_noNA, is.na(Mother))) #3491
-nrow(subset(breed_gtit_noNA, is.na(Father))) #6382
-
-#have both parents
-nrow(subset(breed_gtit_noNA, !is.na(Mother) & !is.na(Father))) #10419
-#have just mother
-nrow(subset(breed_gtit_noNA, !is.na(Mother))) #13723
-nrow(subset(breed_gtit_noNA, !is.na(Mother) & is.na(Father))) #3304 have no mother but have father
-#have jsut father
-nrow(subset(breed_gtit_noNA, !is.na(Father))) #10832
-nrow(subset(breed_gtit_noNA, !is.na(Father) & is.na(Mother))) #413 have no father but have mother
-
-
+#subset
 breed_gtit_noNA <- breed_gtit_noNA %>%
   dplyr::filter(!is.na(Mother)) %>%
   dplyr::select('year', 'Pnum', 'Section', 'April.lay.date', 'April.hatch.date',
@@ -172,15 +156,15 @@ length(unique(breed_gtit_noNA$Father)) #6342
 length(unique(breed_gtit_noNA$Pnum)) #12151
 summary(breed_gtit_noNA$April.lay.date) #-5 to 83
 
-
 nrow(breed_gtit_noNA) #12151
 
 
 # ADD AGE  ----------------------------------------------------------------
 
+#read in raw ringing data to get ages from 
 ring <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), na.strings=c("", "NA"))
 
-
+#function to get the age of individuals
 breed_gtit_noNA_age <- clean$get_age(breed_gtit_noNA, ring)
 table(breed_gtit_noNA_age$Fem_breed_age)
 
