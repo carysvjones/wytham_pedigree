@@ -1,41 +1,23 @@
 ---
-title: "prep matrices and compare"
+title: "Run animal models in asreml"
 author: "Carys Jones"
 date: '2023-01-31'
-output: html_document
 ---
 
-when run models make sure make things factors beforehand
 
 # Dependencies
 ```{r}
 
-
-groundhog.library()
-
-
 box::use(.. / R / dirs[dirs])
-box::use(clean = ../ R / clean_data)
-box::use(mod = ../ R / for_models)
+box::use(mods = ../ R / for_models)
 
-box::use(readr[read_csv])
-box::use(ggplot2[...])
-box::use(dplyr)
-box::use(moments)
-box::use(kinship2)
-box::use(sf)
-box::use(tidyr)
-box::use(pedantics)
-box::use(magrittr[`%>%`])
 box::use(asreml)
-box::use(Matrix)
+box::use(dplyr)
 
-box::use(brms)
-
-remotes::install_github("stan-dev/cmdstanr")
-install_cmdstan()
 ```
 
+
+# BREEDING DATA --------------------------------------------------------------
 
 
 ```{r}
@@ -43,152 +25,59 @@ install_cmdstan()
 gtit_data_sub_nb <- read.csv(file.path(dirs$data, 'GTIT_data_anim_mod.csv'), na.strings=c("", "NA"))
 nrow(gtit_data_sub_nb) #11526
 
+#make factors
 gtit_data_sub_nb <- gtit_data_sub_nb %>%
    dplyr::mutate_at(c('breeding_year', 'Mother', 'Fbreeding_age_group', 'nest.box'), as.factor) 
 
-#to run with a subset 
+#to run with a subset - if you want to mess around a run models with subset of years etc
+#helpful when running big models to test things - I wrote a basic function to do that quickly
 #put dates as range e.g. 2011:2021, or 'ALL' to get all years of data 
 breed_data <- mod$choose_data(gtit_data_sub_nb, years = 'ALL')
+#checks
 unique(breed_data$breeding_year)
 nrow(breed_data) #11526
 
 
-#get distinct line for each mother with whole dataset
-breed_data_uniq <- breed_data %>%
-  dplyr::distinct(., Mother, .keep_all = TRUE)
-nrow(breed_data_uniq) #7595
-length(unique(breed_data_uniq$Mother)) #7595
-
 ```
 
 
-# ENVIRONMENT SIM MATRIX  -------------------------------------------------
+
+# PEDIGREE DATA --------------------------------------------------------------
 
 ```{r}
-
-# As environmental measures may occur on different scales, we first scale and center the environmental data.
-# This is done by taking away the mean (so the mean becomes 0) and dividing by the standard deviation for
-# each environmental measure (so the variance becomes 1).
-# First gets the relevant columns from the data
-
-#need to make single line for each Mother
-#keep just 1 line per id 
-nrow(breed_data_uniq) #774
-env_var <- breed_data_uniq[,c("alt_mean", "northness_mean", "edge_mean", "No_trees_75m_mean",
-                        "area_polygon_crop3_mean")]
-
-
-# Centers the data, and scales by standard deviation
-env_var <- scale(env_var, center = T, scale = T)
-rownames(env_var) <- breed_data_uniq$Mother
-
-# similarity matrix between individuals
-# calculates the euclidean distance between each individual's environment parameters
-env_var_euc <- as.matrix(dist(env_var, method = "euclidean", diag = T, upper = T))
-# then scales so that the values are between 0 and 1
-env_var_euc_scal <- 1 - env_var_euc / max (env_var_euc, na.rm = TRUE)
-colnames(env_var_euc_scal) <- rownames(env_var_euc_scal) <- breed_data_uniq$Mother 
-
-#make positive definite so can run in animal model 
-env_var_euc_scal_PD <- Matrix::nearPD(env_var_euc_scal)
-env_matrix <- env_var_euc_scal_PD$mat
-
-saveRDS(env_matrix, file = file.path(dirs$data,'env_matrix.rds'))
-
-env_matrix <- readRDS(file.path(dirs$data, 'env_matrix.rds'))
-
-
-
-```
-
-
-# SPATIAL MATRIX ---------------------------------------------------------
-
-```{r}
-
-#make distance matrix
-#make coordinates into geometries 
-spatial_geom <- sf::st_as_sf(breed_data_uniq, coords = c("x_mean", "y_mean"), crs = 27700) 
-#keep just geometry
-geom <- spatial_geom[,c('geometry')]
-rownames(geom) <- spatial_geom$Mother
-#make distance matrix 
-spat_mat <- as.matrix(sf::st_distance(geom, geom))
-colnames(spat_mat) <- rownames(spat_mat) <- spatial_geom$Mother
-
-#can make it to a matrix and array by doing this 
-spat_mat_conv <- as.numeric(spat_mat)
-dim(spat_mat_conv) <- c(nrow(spatial_geom), nrow(spatial_geom)) #give it dimensions?
-colnames(spat_mat_conv) <- rownames(spat_mat_conv) <- spatial_geom$Mother
-
-#scale the matrix - so diagonal is 1
-spat_mat_conv_sc <- 1- spat_mat_conv / max (spat_mat_conv, na.rm=TRUE)
-spat_mat_conv_sc_PD <- Matrix::nearPD(spat_mat_conv_sc)
-spatial_matrix <- spat_mat_conv_sc_PD$mat
-
-subset(spatial_matrix, spatial_matrix[,4] == 16)
-
-saveRDS(spatial_matrix, file = file.path(dirs$data,'spatial_matrix.rds'))
-
-spatial_matrix <- readRDS(file.path(dirs$data, 'spatial_matrix.rds'))
-
-
-```
-
-
-PLOTS COMPARING & MANTEL/OTHER TESTS
-
-```{r}
-
-
-
-
-
-```
-
-
-RUN MODELS
-
-
-```{r}
-
-# RUN MODELS --------------------------------------------------------------
 
 #pedigree data input 
 ped_data <- read.csv(file.path(dirs$data, 'GTIT-pedigree-for-asreml.csv'), na.strings=c("", "NA"))
 nrow(ped_data) #15745
 
-ped_data <- ped_gtit_final
-#get inverse of matrix
+#get inverse of matrix - need this to run models
 ped_data_inv <- asreml::ainverse(ped_data)
-
-#create another column to associate with second matrix
-
-breed_data$Mother <- as.factor(breed_data$Mother)
-breed_data$Mother2 <- breed_data$Mother
-breed_data$Mother3 <- breed_data$Mother
 
 
 ```
 
 
-
+# RUN MODELS --------------------------------------------------------------
 
 ```{r}
 
-# LAYING DATE  ------------------------------------------------------------
+#For laying date - running some basic models, shouldn't take too long to run 
 
-#model basic 
-LD_basic_test2 <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
+#model basic  - 
+#fixed effect of breeding age (as juvenile = 1, and adult = >1)
+#random effect of breeding year, vm = additive genetic effect, ide = permanenet environment effect
+LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                   random = ~vm(Mother, ped_data_inv) + 
                             ide(Mother, ped_data_inv) +
                             breeding_year,
                   data = breed_data)
+#save output
 saveRDS(LD_basic, file = file.path(dirs$output,'LD_basic.rds'))
 
 
-#model with NB
-LD_NB_2 <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
+#model with NB -
+#same as above but now including the nest box ID as a random effect too 
+LD_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                 random = ~vm(Mother, ped_data_inv) + 
                   ide(Mother, ped_data_inv) +
                   breeding_year + 
@@ -196,135 +85,3 @@ LD_NB_2 <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                 data = breed_data)
 saveRDS(LD_NB, file = file.path(dirs$output,'LD_NB.rds'))
 
-
-#without distance matrix
-LD_spat <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
-                       random = ~vm(Mother, ped_data_inv) + 
-                         ide(Mother, ped_data_inv) +
-                         vm(Mother2, spatial_matrix) +
-                         breeding_year,
-                       data = breed_data,
-                  workspace = 300e6, pworkspace=300e6)
-saveRDS(LD_spat, file = file.path(dirs$output,'LD_spat.rds'))
-
-
-
-#model with envir sim matrix
-LD_envir <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
-                        random = ~vm(Mother, ped_data_inv) + 
-                          ide(Mother, ped_data_inv) +
-                          vm(Mother2, env_matrix) +
-                          breeding_year,
-                        data = breed_data,
-                  workspace = 300e6, pworkspace=300e6,
-                  maxiter = 50)
-saveRDS(LD_envir, file = file.path(dirs$output,'LD_envir.rds'))
-
-
-
-# #wiht both matrices - Fbreeding_age_group
-# LD_dist_env <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
-#                        random = ~vm(Mother, ped_data_inv) + ide(Mother, ped_data_inv) +
-#                         vm(Mother3, env_matrix) +
-#                          vm(Mother2, spatial_matrix) + 
-#                          breeding_year,
-#                         data = breed_data)
-# saveRDS(LD_dist_env, file = './output/LD_dist_env.rds')
-
-
-
-
-# HATCHING DATE -----------------------------------------------------------
-
-
-#model basic 
-HD_basic <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                  random = ~vm(Mother, ped_data_inv) + 
-                            ide(Mother, ped_data_inv) +
-                            breeding_year,
-                  data = breed_data)
-saveRDS(HD_basic, file = file.path(dirs$output,'HD_basic.rds'))
-
-
-#model with NB
-HD_NB <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                random = ~vm(Mother, ped_data_inv) + 
-                  ide(Mother, ped_data_inv) +
-                  breeding_year + 
-                  nest.box,
-                data = breed_data)
-saveRDS(HD_NB, file = file.path(dirs$output,'HD_NB.rds'))
-
-
-#without distance matrix
-HD_dist <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                       random = ~vm(Mother, ped_data_inv) + 
-                         ide(Mother, ped_data_inv) +
-                         vm(Mother2, spatial_matrix) +
-                         breeding_year,
-                       data = breed_data,
-                  workspace = 300e6, pworkspace=300e6,
-                  maxiter = 50)
-saveRDS(HD_dist, file = file.path(dirs$output,'HD_dist.rds'))
-
-
-#model with envir sim matrix
-HD_envir <- asreml::asreml(fixed = April.hatch.date ~ 1 + Fbreeding_age_group,
-                        random = ~vm(Mother, ped_data_inv) + 
-                          ide(Mother, ped_data_inv) +
-                          vm(Mother2, env_matrix) +
-                          breeding_year,
-                        data = breed_datac)
-saveRDS(HD_envir, file = file.path(dirs$output,'HD_envir.rds'))
-
-
-
-```
-
-
-
-RUN MODELS WITH BRMS 
-
-
-```{r}
-
-prepped <- nadiv::prepPed(ped_data_sub)
-Amat <- as.matrix(nadiv::makeA(prepped))
-
-#model basic 
-LD_test <- brms::brm(April.lay.date ~ 1 + Fbreeding_age_group + 
-                        (1 | Mother2) + 
-                        (1 | gr(Mother, cov = Amat)) +
-                        (1 | breeding_year),
-                      data = breed_data, 
-                     data2 = list(Amat = Amat),
-                      family = gaussian(),
-                     backend = "cmdstanr",
-                     iter = 800, warmup = 50, chains = 4,
-                     cores = parallel::detectCores() - 1)
-
-plot(LD_test)
-summary(LD_test)
-brms::mcmc_plot(LD_test, type = "pairs")
-summary(LD_test)$random
-
-LD_test <- brms::add_criterion(LD_test, "waic")
-LD_test2 <- brms::add_criterion(LD_test2, "waic")
-
-brms::loo_compare(LD_test, LD_test2, criterion = "waic")
-
-
-v_animal <- (brms::VarCorr(LD_test, summary = FALSE)$Mother$sd)^2
-v_r <- (brms::VarCorr(LD_test, summary = FALSE)$residual__$sd)^2
-h.bwt <- brms::as.mcmc(v_animal / (v_animal + v_r))
-summary(h.bwt)
-plot(h.bwt)
-
-
-summary(LD_basic)$varcomp
-LD_basic.h2
-
-
-
-
-```
