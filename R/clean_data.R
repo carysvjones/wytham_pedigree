@@ -169,8 +169,8 @@ clean_ringing_data <- function(data){
                     bto_ring != 'UNRINGED' &
                     #keep only not retraps
                     retrap == 'N' &
-                    #keep only age 1 birds
-                    age == 1 & 
+                    #keep only age 1 birds - do later!
+                    # age == 1 & 
                     #keep those only in main woods
                    location == 'Wytham_Core' &
                    #remove thos with no Pnum
@@ -246,8 +246,8 @@ clean_ringing_data_2 <- function(data){
     dplyr::filter(Date != '2013'&
                     #only not retraps
                     Rtype == 'N' &
-                    #keep age 1 only
-                    Age == 1 &
+                    #keep age 1 only - do later!
+                    # Age == 1 &
                     #from Wytham main 
                     Place == 'WYT' &
                     #get rid of those with no Ring
@@ -292,10 +292,8 @@ isdup <- function (x) duplicated (x) | duplicated (x, fromLast = TRUE)
 get_age <- function(data, ringing_data){
   
   #Get those we know when born
-  #use ringing data before cleaned - so have to read in 
-  ring_all <- ringing_data
   #just keep greti
-  ring_all_gtit <- ring_all %>%
+  ring_all_gtit <- ringing_data %>%
     dplyr::filter(bto_species_code == 'GRETI')
   
   #just get age for those that we know for sure in ringing dataset
