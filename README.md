@@ -4,7 +4,7 @@ Get wytham great tits pedigree and run basic animal models
 
 
 <b>To use this repository:</b>
-- Navigate to the folder where you want to install the repository. Then type `git clone https://github.com/jonesc176/wytham_pedigree.git`
+- Navigate to the folder where you want to install the repository. Then type `git clone https://github.com/carysvjones/wytham_pedigree.git`
 - Or just download as .zip file, using the drop down in `<> Code`
 
 <br>
