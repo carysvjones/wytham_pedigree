@@ -62,10 +62,10 @@ ring_gtit <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_
                 age == 1)
 
 #quick summaries
-nrow(ring_gtit) #91250
-length(unique(ring_gtit$Pnum)) #12686
+nrow(ring_gtit) #91646
+length(unique(ring_gtit$Pnum)) #12711
 length(unique(ring_gtit$nb)) #1121  
-length(unique(ring_gtit$bto_ring)) #91250
+length(unique(ring_gtit$bto_ring)) #91645
 
 
 # MERGE - ring and breed  ---------------------------------------
@@ -76,8 +76,8 @@ breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = 'Pnum', all = T) %>%
   dplyr::select(bto_ring, Father, Mother, sex)
 
 #summaries
-nrow(breed_ring_gtit) #96695
-length(unique(breed_ring_gtit$bto_ring)) #91251
+nrow(breed_ring_gtit) #97066
+length(unique(breed_ring_gtit$bto_ring)) #91646
 length(unique(breed_ring_gtit$Mother)) #8532
 length(unique(breed_ring_gtit$Father)) #7216
 
@@ -91,14 +91,14 @@ ped_gtit_short <- breed_ring_gtit %>%
          sire = Father)
 
 head(ped_gtit_short)
-nrow(ped_gtit_short) #96695
+nrow(ped_gtit_short) #97066
 
 #fix the pedigree - adds any missing individuals to id column and orders it correctly
 ped_gtit_short_ext_fix <- pedantics::fixPedigree(ped_gtit_short)
 ped_gtit_short_ext_fix <- MasterBayes::orderPed(ped_gtit_short_ext_fix)
 
 #this is the overall huge pedigree!
-nrow(ped_gtit_short_ext_fix) #98848
+nrow(ped_gtit_short_ext_fix) #99239
 #so can save this here...
 write.csv(ped_gtit_short_ext_fix, file = file.path(dirs$data_output,'GTIT-pedigree-full.csv'), row.names = F)
 
