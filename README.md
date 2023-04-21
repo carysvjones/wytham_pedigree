@@ -1,6 +1,8 @@
 <b>WYTHAM GREAT TITS PEDIGREE</b>
 
 <span style="font-size:60px;">This text will be larger</span>
+<font size="24">This text will be larger</font>
+
 
 Get wytham great tits pedigree and run basic animal models
 
