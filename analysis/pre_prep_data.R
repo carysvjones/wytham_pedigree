@@ -78,11 +78,11 @@ ring <- read.csv(file.path(dirs$data_raw, 'legacy_ringing_records_GT&BT_up_to_20
   clean$clean_ringing_data(.) %>%
   #keep only some columns
   dplyr::select(Pnum, age, sex, bto_species_code, bto_ring, yr, nb, retrap)
-nrow(ring) #156035
+nrow(ring) #179010
 
 # Clean Ringing data 2013-2022  -------------------------------------
 
-ring2 <- ring2 %>% 
+ring2_clean <- ring2 %>% 
   #clean with function - removes errors and cleans up dataframe
   clean$clean_ringing_data_2(.) %>%
   dplyr::mutate(Pnum = paste0(Date, '1', Site)) %>%
@@ -98,11 +98,11 @@ ring2 <- ring2 %>%
   ) %>%
   #keep only selected columns
   dplyr::select(Pnum, age, sex, bto_species_code, bto_ring, yr, nb, retrap)
-nrow(ring2) #43087
+nrow(ring2_clean) #61344
 
 #bind
-ring_all <- rbind(ring, ring2)
-nrow(ring_all) #199122
+ring_all <- rbind(ring, ring2_clean)
+nrow(ring_all) #240354
 
 #save
 write.csv(ring_all, file = file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), row.names = F)
