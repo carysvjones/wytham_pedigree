@@ -22,8 +22,8 @@ box::use(dplyr)
 
 ```{r}
 
-gtit_data_sub_nb <- read.csv(file.path(dirs$data, 'GTIT_data_anim_mod.csv'), na.strings=c("", "NA"))
-nrow(gtit_data_sub_nb) #11526
+gtit_data_sub_nb <- read.csv(file.path(dirs$data_output, 'GTIT_data_anim_mod.csv'), na.strings=c("", "NA"))
+nrow(gtit_data_sub_nb) #11660
 
 #make factors
 gtit_data_sub_nb <- gtit_data_sub_nb %>%
@@ -32,10 +32,10 @@ gtit_data_sub_nb <- gtit_data_sub_nb %>%
 #to run with a subset - if you want to mess around a run models with subset of years etc
 #helpful when running big models to test things - I wrote a basic function to do that quickly
 #put dates as range e.g. 2011:2021, or 'ALL' to get all years of data 
-breed_data <- mod$choose_data(gtit_data_sub_nb, years = 'ALL')
+breed_data <- mods$choose_data(gtit_data_sub_nb, years = 'ALL')
 #checks
 unique(breed_data$breeding_year)
-nrow(breed_data) #11526
+nrow(breed_data) #11660
 
 
 ```
@@ -47,7 +47,7 @@ nrow(breed_data) #11526
 ```{r}
 
 #pedigree data input 
-ped_data <- read.csv(file.path(dirs$data, 'GTIT-pedigree-for-asreml.csv'), na.strings=c("", "NA"))
+ped_data <- read.csv(file.path(dirs$data_output, 'GTIT-pedigree-subset.csv'), na.strings=c("", "NA"))
 nrow(ped_data) #15745
 
 #get inverse of matrix - need this to run models
@@ -64,8 +64,8 @@ ped_data_inv <- asreml::ainverse(ped_data)
 #For laying date - running some basic models, shouldn't take too long to run 
 
 #model basic  - 
-#fixed effect of breeding age (as juvenile = 1, and adult = >1)
-#random effect of breeding year, vm = additive genetic effect, ide = permanenet environment effect
+#fixed effect of breeding age (as juvenile = 1, and adult = older than 1)
+#random effect of breeding year, vm = additive genetic effect, ide = permanent environment effect
 LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                   random = ~vm(Mother, ped_data_inv) + 
                             ide(Mother, ped_data_inv) +
