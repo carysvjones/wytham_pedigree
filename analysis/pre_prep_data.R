@@ -115,18 +115,19 @@ write.csv(ring_all, file = file.path(dirs$data_output, 'ebmp_database_ringing_re
 
 #make combined dataset of all nestbox environment data
 
-#read in nest box data and use some classifcations of habitat
+#read in nest box data and use some classifications of habitat
 nestbox <- read.csv(file.path(dirs$data_raw, 'Nest_box_habitat_data.csv'), na.strings=c("", "NA"))
 nrow(nestbox) #1019
 nestbox <- nestbox %>%
   dplyr::select('Box', 'Section', 'x', 'y', 'edge.EDI.', 'altitude.m.', 'northness')
 
-#oak data - not for all boxes.... leave some with NA
+#oak data - keep only number tress within 75m
 oak <- read.csv(file.path(dirs$data_raw, 'Tit_oak_data.csv'), na.strings=c("", "NA"))
 nrow(oak) #987
 oak <- oak %>%
   dplyr::select('Box', 'No_trees_75m')
 
+#merge
 box_tree <- merge(nestbox, oak, by = 'Box', all.x = T)
 head(box_tree)
 nrow(box_tree) #1019
@@ -138,7 +139,6 @@ nrow(box_tree) #1019
 wood.outline <- sf::st_read(file.path(dirs$data_raw, '/maps/perimeter poly with clearings_region.shp'))
 
 #extracting the first polygon because that's the bit of the woods we care about
-#(and the polygons go a bit nuts if you don't)
 wood.outline <- wood.outline[1,]
 #need to transform wood outline
 wood.outline <- st_transform(wood.outline, 27700)
@@ -152,12 +152,10 @@ nrow(breeding.data) #37577
 
 #get subset of just great tits
 breeding.data.G <- subset(breeding.data, Species == 'g' )
-
 #converting it into a spatial object
 breeding.data.G <- sf::st_as_sf(breeding.data.G, coords=c("x","y"), remove=F, crs=27700)
 
 #calculating a bounding box for the function that calculates the territory polygons
-#can use this for when include blue tits as well later
 bbox_polygon_G <- function(x) {
   bb <- sf::st_bbox(x)
   
@@ -173,7 +171,6 @@ bbox_polygon_G <- function(x) {
   sf::st_polygon(list(p))
 }
 box <- sf::st_sfc(bbox_polygon_G(breeding.data.G))
-
 
 #loop to get territory size for individuals within each year
 GTIT_allyrs_area <- NULL
