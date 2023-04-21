@@ -74,6 +74,10 @@ LD_basic <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
 #save output
 saveRDS(LD_basic, file = file.path(dirs$output,'LD_basic.rds'))
 
+#look at output
+summary(LD_basic)$varcomp
+
+
 
 #model with NB -
 #same as above but now including the nest box ID as a random effect too 
@@ -85,3 +89,4 @@ LD_NB <- asreml::asreml(fixed = April.lay.date ~ 1 + Fbreeding_age_group,
                 data = breed_data)
 saveRDS(LD_NB, file = file.path(dirs$output,'LD_NB.rds'))
 
+summary(LD_NB)$varcomp
