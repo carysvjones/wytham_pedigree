@@ -17,7 +17,7 @@ box::use(moments)
 box::use(kinship2)
 box::use(sf)
 box::use(tidyr)
-box::use(pedantics)
+box::use(nadiv)
 box::use(magrittr[`%>%`])
 
 ```
@@ -94,8 +94,8 @@ head(ped_gtit_short)
 nrow(ped_gtit_short) #97066
 
 #fix the pedigree - adds any missing individuals to id column and orders it correctly
-ped_gtit_short_ext_fix <- pedantics::fixPedigree(ped_gtit_short)
-ped_gtit_short_ext_fix <- MasterBayes::orderPed(ped_gtit_short_ext_fix)
+ped_gtit_short_ext_fix <- nadiv::prepPed(ped_gtit_short)
+
 
 #this is the overall huge pedigree!
 nrow(ped_gtit_short_ext_fix) #99239
