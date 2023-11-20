@@ -198,7 +198,7 @@ habitat_data <- read.csv(file.path(dirs$data_output, 'Habitat_data_nestboxes.csv
 
 #now merge with breeding data
 gtit_data_sub_nb <- merge(breed_gtit_noNA_age_sub, habitat_data, by = 'Pnum')
-nrow(gtit_data_sub_nb) #11660 - only a few hundred missing from before 
+nrow(gtit_data_sub_nb) #11660 
 
 #cropped pop density @ 3 hectares
 gtit_data_sub_nb$area_polygon.G_crop3 <- gtit_data_sub_nb$area_polygon.G
@@ -210,7 +210,7 @@ summary(gtit_data_sub_nb$area_polygon.G_crop3)
 
 #data 
 nrow(gtit_data_sub_nb) #11660
-length(unique(gtit_data_sub_nb$Mother)) #7595
+length(unique(gtit_data_sub_nb$Mother)) #7676
 
 #if individuals have multiple breeding attempts
 #need to find midpoint location of nest boxes
