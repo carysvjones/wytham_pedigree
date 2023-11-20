@@ -310,7 +310,7 @@ get_age <- function(data, ringing_data){
                       age == '6' ~ as.integer((yr-2)))) %>%
     dplyr::group_by(bto_ring) %>%
     #get earliest DOB for each if have more than 1 
-    tidyr::replace_na(list(Fem_DOB = Inf)) %>%  # replace missing values with Inf
+    tidyr::replace_na(list(Fem_DOB = 2200)) %>%  # replace missing values with Inf
     dplyr::slice_min(n = 1, order_by = Fem_DOB) %>%  # select the row with the smallest Fem_Age
     #keep only 1 row per individual 
     dplyr::slice_head() %>%
