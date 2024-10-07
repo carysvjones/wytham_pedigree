@@ -1,7 +1,7 @@
 <b>WYTHAM GREAT TITS PEDIGREE</b>
 ==============================
 
-Get wytham great tits pedigree and run basic animal models
+Get a pedigree of the wytham great tits! (and run some basic animal models)
 
 
 <b>To use this repository:</b>
