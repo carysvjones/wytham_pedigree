@@ -6,9 +6,9 @@ date: '2023-01-26'
 
 # Dependencies
 ```{r}
-box::use(.. / R / dirs[dirs])
-box::use(clean = ../ R / clean_data)
-box::use(mods = ../ R / for_models)
+box::use(. / R / dirs[dirs])
+box::use(clean = ./ R / clean_data)
+box::use(mods = ./ R / for_models)
 
 box::use(readr[read_csv])
 box::use(ggplot2)
@@ -35,97 +35,137 @@ PREPARE PEDIGREE
 
 # MERGE BREEDING AND RINGING DATA -----------------------------------------
 
-#input clean breeding attempt data 1960-2022
-breed <- read.csv(file.path(dirs$data_output, 'LT_breeding_data_greti_bluti_1960_2022.csv'), na.strings=c("", "NA"))
-nrow(breed) #40255
+# input clean breeding attempt data 1960-2022
+breed <- read.csv(file.path(
+    dirs$data_output,
+    "LT_breeding_data_greti_bluti_1960_2022.csv"
+), na.strings = c("", "NA"))
+nrow(breed) # 40248
 
-#subset to just keep great tits 
-breed_gtit <- breed %>% 
-  dplyr::filter(Species == 'g')
-nrow(breed_gtit) #18000
+# subset to just keep great tits
+breed_gtit <- breed %>%
+    dplyr::filter(species == "g")
+nrow(breed_gtit) # 17996
 
-#quick summaries
-nrow(breed_gtit) #18000
-length(unique(breed_gtit$Pnum)) #18000
-length(unique(breed_gtit$Mother)) #8532
-summary(as.factor(breed_gtit$Mother)) #3831 mothers unknown  
-length(unique(breed_gtit$Father)) #7216
-summary(as.factor(breed_gtit$Father)) #6820
+# quick summaries
+nrow(breed_gtit) # 17996
+length(unique(breed_gtit$pnum)) # 17996
+length(unique(breed_gtit$mother)) # 8531
+summary(as.factor(breed_gtit$mother)) # 3830 mothers unknown
+length(unique(breed_gtit$father)) # 7215
+summary(as.factor(breed_gtit$father)) # 6818
 
 
 # READ IN - Ringing Data  --------------------------------------------------
 
-ring_gtit <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'),
-                  na.strings=c("", "NA")) %>% 
-  #just keep great tits and only those that are age 1 (chicks)
-  dplyr::filter(bto_species_code == 'GRETI',
-                age == 1)
+ring_all <- read.csv(
+    file.path(
+        dirs$data_output,
+        "ebmp_database_ringing_record_export_GT&BT_all.csv"
+    ),
+    na.strings = c("", "NA")
+)
 
-#quick summaries
-nrow(ring_gtit) #91646
-length(unique(ring_gtit$Pnum)) #12711
-length(unique(ring_gtit$nb)) #1121  
-length(unique(ring_gtit$bto_ring)) #91645
+# just keep great tits and keep those only age 1
+ring_gtit <- ring_all %>%
+    dplyr::filter(
+        bto_species_code == "GRETI",
+        age == 1
+    )
+
+# quick summaries
+nrow(ring_gtit) # 91645
+length(unique(ring_gtit$pnum)) # 12711
+length(unique(ring_gtit$nb)) # 1121
+length(unique(ring_gtit$bto_ring)) # 91645
 
 
 # MERGE - ring and breed  ---------------------------------------
 
-#merge both datasets by Pnum
-breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = 'Pnum', all = T) %>%
-  #keep only some columns
-  dplyr::select(bto_ring, Father, Mother, sex)
+# merge both datasets by pnum -   #keep all so have all parents in pedigree
+breed_ring_gtit <- merge(breed_gtit, ring_gtit, by = "pnum", all = T) %>%
+    # keep only some columns
+    dplyr::select(bto_ring, mother, father, sex, nest_box) %>%
+    # nest box here is nest box the bto_ring bird was born in
+    # rename this as use it for regression analysis (supplementary)
+    dplyr::rename(nest_box_born_in = nest_box) %>%
+    # remove rows where bto_ring, mother and father are NA
+    dplyr::filter(!is.na(bto_ring) | !is.na(mother) | !is.na(father))
 
-#summaries
-nrow(breed_ring_gtit) #97066
-length(unique(breed_ring_gtit$bto_ring)) #91646
-length(unique(breed_ring_gtit$Mother)) #8532
-length(unique(breed_ring_gtit$Father)) #7216
+nrow(breed_gtit) # 17996
+nrow(ring_gtit) # 91645
 
+# summaries
+nrow(breed_ring_gtit) # 94005
+length(unique(breed_ring_gtit$bto_ring)) # 91646
+length(unique(breed_ring_gtit$mother)) # 8531
+length(unique(breed_ring_gtit$father)) # 7215
+
+# save this
+write.csv(breed_ring_gtit,
+    file = file.path(dirs$data_output, "GTIT-pedigree-full.csv"), row.names = F
+)
 
 # CREATING PEDIGREE ----------------------------------------------------------
 
-#rename columns 
+# rename columns
 ped_gtit_short <- breed_ring_gtit %>%
-  dplyr::rename(id = bto_ring,
-         dam = Mother,
-         sire = Father)
-
+    dplyr::rename(
+        id = bto_ring,
+        dam = mother,
+        sire = father
+    ) %>%
+    dplyr::select(id, dam, sire, sex)
 head(ped_gtit_short)
-nrow(ped_gtit_short) #97066
+nrow(ped_gtit_short) # 94005
 
-#fix the pedigree - adds any missing individuals to id column and orders it correctly
-ped_gtit_short_ext_fix <- nadiv::prepPed(ped_gtit_short)
+# fix the pedigree - adds any missing individuals to id column and orders it correctly
+
+# find any dam or sire that aren't in id column
+
+miss_dam <- unique(ped_gtit_short$dam[!(ped_gtit_short$dam %in%
+    ped_gtit_short$id)])
+miss_dam_df <- data.frame(id = miss_dam, dam = NA, sire = NA, sex = "F")
+
+miss_sire <- unique(ped_gtit_short$sire[!(ped_gtit_short$sire %in%
+    ped_gtit_short$id)])
+miss_sire_df <- data.frame(id = miss_sire, dam = NA, sire = NA, sex = "M")
+
+full_ped <- rbind(miss_dam_df, miss_sire_df, ped_gtit_short) %>%
+    dplyr::filter(!is.na(id))
+nrow(full_ped) # 99239
 
 
-#this is the overall huge pedigree!
-nrow(ped_gtit_short_ext_fix) #99239
-#so can save this here...
-write.csv(ped_gtit_short_ext_fix, file = file.path(dirs$data_output,'GTIT-pedigree-full.csv'), row.names = F)
+# this is the overall huge pedigree!
+head(full_ped)
+nrow(full_ped) # 99239
 
+# so can save this here...
+write.csv(full_ped,
+    file =
+        file.path(dirs$data_output, "GTIT_pedigree_full.csv"), row.names = F
+)
 
+# I myself then keep just those that have a laying date recorded, as that's what is useful for my analysis
 
-#I myself then keep just those that have a laying date recorded, as that's what is useful for my analysis
-
-#make column for LD with dummy values to say if have LD recorded or not - so I can keep only informative individuals 
-ped_gtit_short_ext_fix_LD <- dplyr::mutate(ped_gtit_short_ext_fix, LD_num = 
-                                      ifelse(ped_gtit_short_ext_fix$id %in% breed_gtit$Father |
-                                             ped_gtit_short_ext_fix$id %in% breed_gtit$Mother, 1, NA))
+# make column for LD with dummy values to say if have LD recorded or not - so I can keep only informative individuals
+full_ped_LD <- dplyr::mutate(full_ped,
+    LD_num =
+        ifelse(full_ped$id %in% breed_gtit$father |
+            full_ped$id %in% breed_gtit$mother, 1, NA)
+)
+summary(as.factor(full_ped_LD$LD_num))
 
 # subset those with a LD
-ped_gtit_final <- ped_gtit_short_ext_fix_LD %>%
-  dplyr::filter(!is.na(LD_num)) %>%
-  droplevels() %>%
-  dplyr::select(id, dam, sire)
-nrow(ped_gtit_final) #15745
+ped_gtit_final <- full_ped_LD %>%
+    dplyr::filter(!is.na(LD_num)) %>%
+    droplevels() %>%
+    dplyr::select(id, dam, sire)
+nrow(ped_gtit_final) # 15744
 
+ped_gtit_final <- nadiv::prepPed(ped_gtit_final)
 
-#get pedigree stats - this take a long time to run 
-# pedigree_stats <- pedantics::pedigreeStats(ped_gtit_short_ext_fix, retain = 'informative')
-# nrow(pedigree_stats$analyzedPedigree) #14559
-# saveRDS(pedigree_stats, file = file.path(dirs$data_output,'GTIT-pedStatSummary-full_output.rds'), row.names = F)
-
-write.csv(ped_gtit_final, file = file.path(dirs$data_output,'GTIT-pedigree-subset.csv'), row.names = F)
-
+write.csv(ped_gtit_final, file = file.path(dirs$data_output, "GTIT-pedigree-for-asreml.csv"), row.names = F)
 
 ```
 
@@ -135,105 +175,121 @@ For running animal models
 
 
 ```{r}
+
+
 # GREAT TITS --------------------------------------------------------------
 
 # BREEDING DATA ---------------------------------------------------
 
-nrow(breed_gtit) #18000
-
-#get rid of those with experiment codes, no LD and no Mother
-breed_gtit_noNA <- breed_gtit %>%
-  dplyr::filter(is.na(breed_gtit$Experiment.codes) &
-                  !is.na(breed_gtit$April.lay.date))
-
-#subset
-breed_gtit_noNA <- breed_gtit_noNA %>%
-  dplyr::filter(!is.na(Mother)) %>%
-  dplyr::select('year', 'Pnum', 'Section', 'April.lay.date', 'April.hatch.date',
-                                        'Clutch.size', 'Num.fledglings', 'Father', 'Mother', 'nest.box')
-length(unique(breed_gtit_noNA$Mother)) #7792
-length(unique(breed_gtit_noNA$Father)) #6342
-length(unique(breed_gtit_noNA$Pnum)) #12151
-summary(breed_gtit_noNA$April.lay.date) #-5 to 83
-
-nrow(breed_gtit_noNA) #12151
 
 
 # ADD AGE  ----------------------------------------------------------------
 
-#read in raw ringing data to get ages from 
-ring <- read.csv(file.path(dirs$data_output, 'ebmp_database_ringing_record_export_GT&BT_all.csv'), na.strings=c("", "NA"))
+ring <- read.csv(file.path(dirs$data_output, "ebmp_database_ringing_record_export_GT&BT_all.csv"), na.strings = c("", "NA"))
 
-#function to get the age of individuals
-breed_gtit_noNA_age <- clean$get_age(breed_gtit_noNA, ring)
-table(breed_gtit_noNA_age$Fem_breed_age)
-
-
-# GET RID MOTHER & FATHER KNOWN 2ND BROODS & LATE BROODS ------------------
-
-#use function - decide which ones to use 
-#should say how many breeding attempts it gets rid of each time
-breed_gtit_noNA_age_sub <- clean$remove_late_broods(breed_gtit_noNA_age, mothers = T, fathers = T, late = T)
-nrow(breed_gtit_noNA_age_sub) #11743
-
-#rename year as breeding year - make new column of yearling and adult 
-breed_gtit_noNA_age_sub <- breed_gtit_noNA_age_sub %>%
-  dplyr::rename('breeding_year' = 'year') %>%
-  dplyr::mutate(Fbreeding_age_group = ifelse(Fem_breed_age == 1, 'Yearling', 'Adult')) 
-summary(as.factor(breed_gtit_noNA_age_sub$Fbreeding_age_group)) #Adult 4857, Yearling 6886
-summary(as.factor(breed_gtit_noNA_age_sub$Fem_breed_age))
+breed_gtit_age <- breed_gtit %>%
+    dplyr::filter(!is.na(mother)) %>%
+    clean$get_age(., ring)
+table(breed_gtit_age$fem_breed_age)
+#    1    2    3    4    5    6    7    8    9
+# 7593 3748 1676  742  290   85   26    5    1
 
 
-```
+length(unique(breed_gtit_age$mother)) # 8530
+length(unique(breed_gtit_age$father)) # 7015
+length(unique(breed_gtit_age$pnum)) # 14166
+summary(breed_gtit_age$april_lay_date) #-5 to 83
+
+nrow(breed_gtit_age) # 14166
+
+# get rid of those with experiment codes, no LD
+breed_gtit_age_noNA <- breed_gtit_age %>%
+    dplyr::filter(is.na(breed_gtit_age$experiment_codes) &
+        !is.na(breed_gtit_age$april_lay_date)) %>%
+    dplyr::select(
+        "year", "pnum", "section", "april_lay_date", "april_hatch_date",
+        "clutch_size", "num_fledglings", "father", "mother", "nest_box",
+        "fem_dob", "fem_breed_age"
+    )
+
+nrow(breed_gtit_age_noNA) # 12148
+
+
+# GET RID mother & father KNOWN 2ND BROODS & LATE BROODS ------------------
+
+# use function - decide which ones to use
+# should say how many breeding attempts it gets rid of each time
+breed_gtit_age_noNA_sub <- clean$remove_late_broods(breed_gtit_age_noNA,
+    mothers = T, fathers = T,
+    late = F, late_persection = T
+)
+nrow(breed_gtit_age_noNA_sub) # 11743
+
+# rename year as breeding year - make new column of yearling and adult
+breed_gtit_age_noNA_sub <- breed_gtit_age_noNA_sub %>%
+    dplyr::rename("breeding_year" = "year") %>%
+    dplyr::mutate(Fbreeding_age_group = ifelse(fem_breed_age == 1,
+        "Yearling", "Adult"
+    ))
+summary(as.factor(breed_gtit_age_noNA_sub$Fbreeding_age_group)) # Adult 5420, Yearling 6323
+summary(as.factor(breed_gtit_age_noNA_sub$fem_breed_age))
 
 
 
-ADD SPATIAL DATA 
 
-```{r}
-
-#get habitat data straight away 
-
-habitat_data <- read.csv(file.path(dirs$data_output, 'Habitat_data_nestboxes.csv'), na.strings = "NA")
-
-#now merge with breeding data
-gtit_data_sub_nb <- merge(breed_gtit_noNA_age_sub, habitat_data, by = 'Pnum')
-nrow(gtit_data_sub_nb) #11660 
-
-#cropped pop density @ 3 hectares
-gtit_data_sub_nb$area_polygon.G_crop3 <- gtit_data_sub_nb$area_polygon.G
-gtit_data_sub_nb$area_polygon.G_crop3[gtit_data_sub_nb$area_polygon.G > 30000] <- 30000
-summary(gtit_data_sub_nb$area_polygon.G_crop3)
+# ADD SPATIAL DATA
 
 
-# FOR SIMILARITY MATRICES ----------------------------------------------------------
+# Just open habitat data straight away
 
-#data 
-nrow(gtit_data_sub_nb) #11660
-length(unique(gtit_data_sub_nb$Mother)) #7676
+habitat_data <- read.csv(file.path(
+    dirs$data_output,
+    "Habitat_data_nestboxes.csv"
+), na.strings = "NA") %>%
+    janitor::clean_names()
 
-#if individuals have multiple breeding attempts
-#need to find midpoint location of nest boxes
-#so can use that to make matrix of distance between all individuals
 
-#GET MEAN VALUES OF NEST BOX FOR MULTI NESTERS
+# now merge with breeding data!
+gtit_data_sub_nb <- merge(breed_gtit_age_noNA_sub, habitat_data, by = "pnum")
+nrow(gtit_data_sub_nb) # 11658 - only a few hundred missing from before
+
+
+
+# SPATIAL MATRIX ----------------------------------------------------------
+
+# FINDING MIDPOINT IN SPACE FOR INDIVIDUALS -------------------------------
+
+# data set of all that have nest box
+nrow(gtit_data_sub_nb) # 11658
+length(unique(gtit_data_sub_nb$mother)) # 7679
+
+summary(gtit_data_sub_nb$april_lay_date) #-5 to 60, median = 25
+summary(gtit_data_sub_nb$april_hatch_date) # 768 NAs
+summary(gtit_data_sub_nb$clutch_size) # 42 NAs
+
+
+
+# MEAN COORDINATES OF NEST BOX FOR MULTI NESTERS
+# first make line for each breeding attempt
+# then after individual will have same coords for all rows/breeding attempts
+# so can then jsut keep one row per individual
+
 gtit_data_sub_nb <- gtit_data_sub_nb %>%
-  dplyr::group_by(Mother) %>%
-  dplyr::mutate(x_mean = mean(x),
-                y_mean = mean(y),
-                alt_mean = mean(altitude.m.),
-                northness_mean = mean(northness),
-                edge_mean = mean(edge.EDI.),
-                No_trees_75m_mean = mean(No_trees_75m),
-                area_polygon_crop3_mean = mean(area_polygon.G_crop3)) %>%
-  dplyr::ungroup()
-
-unique(gtit_data_sub_nb$breeding_year)
-
-#output data
-write.csv(gtit_data_sub_nb, file = file.path(dirs$data_output,'GTIT_data_anim_mod.csv'), row.names = F)
+    dplyr::group_by(mother) %>%
+    dplyr::mutate(
+        x_mean = mean(x),
+        y_mean = mean(y),
+        alt_mean = mean(altitude_m, na.rm = T),
+        northness_mean = mean(northness, na.rm = T),
+        edge_mean = mean(edge_edi, na.rm = T),
+        no_trees_75m_mean = mean(no_trees_75m, na.rm = T),
+        area_polygon_sqrt_mean = mean(area_polygon_sqrt, na.rm = T)
+    ) %>%
+    dplyr::ungroup()
 
 
+# output data
+write.csv(gtit_data_sub_nb, file = file.path(dirs$data_output, "GTIT_data_anim_mod.csv"), row.names = F)
 ```
 
 

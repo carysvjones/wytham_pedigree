@@ -7,7 +7,7 @@
 box::use(magrittr[`%>%`])
 box::use(dplyr)
 box::use(rptR)
-
+box::use(mods =  ../ R / for_models)
 
 
 # FUNCTIONS ────────────────────────────────────────────────────────────────── #
@@ -26,6 +26,66 @@ choose_data <- function(data, years){
            droplevels())
   return(output)
 }
+
+
+#' Get bounding box for calculating territory polygons
+#'
+#' @param breeding_data breeding data with spatial object
+#' @return box
+
+bbox_polygon_G <- function(breeding_data) {
+  bb <- sf::st_bbox(breeding_data)
+
+  p <- matrix(
+    c(
+      bb["xmin"], bb["ymin"],
+      bb["xmin"], bb["ymax"],
+      bb["xmax"], bb["ymax"],
+      bb["xmax"], bb["ymin"],
+      bb["xmin"], bb["ymin"]
+    ),
+    ncol = 2, byrow = T
+  )
+
+  sf::st_polygon(list(p))
+}
+
+
+
+
+#' Get territory polygons
+#'
+#' @param breeding_data
+#' @param wood_outline
+#' @param yr year of data
+#' @return dataset with areas for each box occupied within that year
+
+get_territory_polygons <- function(breeding_data, wood_outline, yr) {
+  # create box
+  box <- sf::st_sfc(mods$bbox_polygon_G(breeding_data))
+
+  # find areas
+  breeding_data_areas <- breeding_data %>%
+    dplyr::filter(dplyr::if_any(
+      tidyselect::any_of(c("year", "breeding_year")),
+      ~ . == yr
+    )) %>%
+    # get voronoi polygons
+    sf::st_union() %>%
+    sf::st_voronoi(box) %>%
+    sf::st_cast() %>%
+    sf::st_intersection(sf::st_union(wood_outline)) %>%
+    # joining the territory polygons back up with the individuals that bred in them
+    sf::st_sf() %>%
+    sf::st_join(dplyr::filter(breeding_data, if_any(any_of(c("year", "breeding_year")), ~ . == yr))) %>%
+    # get area in new column
+    dplyr::mutate(area_polygon = sf::st_area(geometry))
+
+  return(breeding_data_areas)
+}
+
+
+
 
 
 
@@ -128,10 +188,6 @@ rep_val <- function(response, data, nboot = 1000, npermut = 0){
 
 
 
-#' Get heritabiltiy output from models - and Vp 
-#' 
-#' @param model which model
-#' @return table, with Vp, over years and between years, and heritabiltiy between and within 
 
 
 
