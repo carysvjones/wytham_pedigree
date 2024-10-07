@@ -6,9 +6,14 @@ date: '07-10-2024'
 
 # Dependencies
 ```{r}
-box::use(. / R / dirs[dirs])
-box::use(clean = ./ R / clean_data)
-box::use(mods = ./ R / for_models)
+box::use( R / dirs[dirs])
+box::use(clean = R / clean_data)
+box::use(mods = R / for_models)
+
+#if above doesn't work try running this instead:
+# box::use(../ R / dirs[dirs])
+# box::use(clean = ../ R / clean_data)
+# box::use(mods = ../ R / for_models)
 
 box::use(readr[read_csv])
 box::use(ggplot2)
