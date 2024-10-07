@@ -1,10 +1,17 @@
 #Prepping data in right format for code 
 
-
+#if it doesn't run soemtimes you have to add a '../' before the R in these next few lines
+#figuring out how to fix this!
 box::use(R / dirs[dirs])
 box::use(clean = R / clean_data)
 box::use(mods = R / for_models)
 
+#if above doesn't work try running this instead:
+# box::use(../ R / dirs[dirs])
+# box::use(clean = ../ R / clean_data)
+# box::use(mods = ../ R / for_models)
+
+#load other packages
 box::use(ggplot2[...])
 box::use(dplyr[...])
 box::use(moments)
